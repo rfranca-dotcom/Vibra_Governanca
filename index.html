@@ -1304,8 +1304,19 @@ function handleFileAttach(event){
 }
 
 // ═══ NEW INITIATIVE ═══
+function generateNextInitiativeId(){
+  const max = initiatives.reduce((acc, it) => {
+    const m = String(it.id || '').match(/^INIT-(\d+)$/);
+    return m ? Math.max(acc, parseInt(m[1], 10)) : acc;
+  }, 0);
+  let candidate = 'INIT-' + String(max + 1).padStart(3, '0');
+  while (initiatives.some(i => i.id === candidate)) {
+    candidate = 'INIT-' + String(parseInt(candidate.slice(5),10) + 1).padStart(3,'0');
+  }
+  return candidate;
+}
 function openNewInitiativeModal(defaultStatus){
-  const nextId='INIT-'+String(initiatives.length+1).padStart(3,'0');
+  const nextId = generateNextInitiativeId();
   openModal('➕ Nova Iniciativa',`<div class="ff mb-2"><label>ID (automático)</label><input class="f-readonly" readonly value="${nextId}"/></div>
   <div class="frow"><div class="ff"><label>Título *</label><input id="ni_t" placeholder="Nome da iniciativa"/></div><div class="ff"><label>Área *</label><select id="ni_a">${AREAS.map(a=>`<option>${a}</option>`).join('')}</select></div></div>
   <div class="frow">
@@ -3582,3 +3593,4 @@ window.addEventListener('load', ()=>{ setTimeout(loadAccessControl, 1200); });
 </script>
 </body>
 </html>
+
