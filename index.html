@@ -1285,12 +1285,22 @@ function openDrawer(initId){
   document.getElementById('drawer').classList.add('open');
 }
 function closeDrawer(){document.getElementById('drawerOv').classList.remove('open');document.getElementById('drawer').classList.remove('open');drawerInitiative=null;}
-function saveDrawer(){
-  if(drawerInitiative){addAudit('Editou',drawerInitiative.id,'Dados atualizados via painel lateral');showToast('Iniciativa salva com sucesso','success');closeDrawer();showTab(currentTab);}
+async function saveDrawer(){
+  if(!drawerInitiative) return;
+  const init = drawerInitiative;
+  addAudit('Editou',init.id,'Dados atualizados via painel lateral');
+  try{ if(typeof persistLocal==='function') persistLocal(); }catch(_){}
+  try{ if(typeof saveInitiativeToSupabase==='function') await saveInitiativeToSupabase(init,true); }catch(_){}
+  try{ if(typeof saveAllInitiatives==='function') await saveAllInitiatives(true); }catch(_){}
+  try{ if(typeof saveModulesState==='function') await saveModulesState(true); }catch(_){}
+  try{ if(typeof saveProjectsState==='function') await saveProjectsState(true); }catch(_){}
+  showToast('Iniciativa salva com sucesso','success');
+  closeDrawer();
+  showTab(currentTab);
 }
 function toggleAcc(hdr){hdr.classList.toggle('open');hdr.nextElementSibling.classList.toggle('open');}
-function addTaskDrawer(){if(!drawerInitiative)return;const t=prompt('Nome da tarefa:');if(!t)return;drawerInitiative.tasks.push({id:'t'+Date.now(),text:t,status:'Não Iniciado',pct:0});openDrawer(drawerInitiative.id);}
-function updateTaskSt(initId,taskId,status){const init=initiatives.find(i=>i.id===initId);if(init){const task=init.tasks.find(t=>t.id===taskId);if(task)task.status=status;}}
+function addTaskDrawer(){if(!drawerInitiative)return;const t=prompt('Nome da tarefa:');if(!t)return;drawerInitiative.tasks.push({id:'t'+Date.now(),text:t,status:'Não Iniciado',pct:0});try{if(typeof scheduleAutosave==='function')scheduleAutosave();}catch(_){};openDrawer(drawerInitiative.id);}
+function updateTaskSt(initId,taskId,status){const init=initiatives.find(i=>i.id===initId);if(init){const task=init.tasks.find(t=>t.id===taskId);if(task)task.status=status;}try{if(typeof scheduleAutosave==='function')scheduleAutosave();}catch(_){}}
 function recalcScore(){
   if(!drawerInitiative)return;
   const i=drawerInitiative;
@@ -2462,15 +2472,25 @@ async function pingSupabase(){
 // --- Autosave debounced — chamado por qualquer mutação -------------------
 let _saveTimer=null;
 function scheduleAutosave(){
-  persistLocal();
+  try{ persistLocal(); }catch(_){}
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(()=>{
-    saveAllInitiatives(true);
-    saveConfigToSupabase(true);
-    saveModulesState(true);
-  }, 800);
+    try{ saveAllInitiatives(true); }catch(_){}
+    try{ saveConfigToSupabase(true); }catch(_){}
+    try{ saveModulesState(true); }catch(_){}
+    try{ if(typeof saveProjectsState==='function') saveProjectsState(true); }catch(_){}
+  }, 350);
+}
+// Flush imediato (sem debounce) — usado em pagehide/visibilitychange/saveDrawer
+async function flushAllNow(){
+  try{ persistLocal(); }catch(_){}
+  try{ await saveAllInitiatives(true); }catch(_){}
+  try{ await saveConfigToSupabase(true); }catch(_){}
+  try{ await saveModulesState(true); }catch(_){}
+  try{ if(typeof saveProjectsState==='function') await saveProjectsState(true); }catch(_){}
 }
 window.scheduleAutosave = scheduleAutosave;
+window.flushAllNow = flushAllNow;
 
 // --- Login APENAS LOCAL (Supabase Auth removido para evitar bloqueios) ---
 // Os usuários ficam persistidos na tabela app_state (id='users') do Supabase,
@@ -2583,16 +2603,25 @@ wrap('updateConfig'); wrap('updateWeight'); wrap('updateFormula'); wrap('updateL
 
 // Captura genérica: qualquer <input>/<select>/<textarea> dentro do app
 // dispara autosave (cobre os onchange inline que mutam objetos diretamente)
-document.addEventListener('change', (ev)=>{
+// IMPORTANTE: ouvimos 'change' E 'input' para capturar digitação,
+// trocas de picklist, checkboxes, datas, etc — tudo é gravado.
+function _autosaveFromEvent(ev){
   if(!currentUser) return;
   const t = ev.target;
   if(t && (t.tagName==='INPUT'||t.tagName==='SELECT'||t.tagName==='TEXTAREA')){
+    try{ persistLocal(); }catch(_){}
     scheduleAutosave();
   }
-}, true);
+}
+document.addEventListener('change', _autosaveFromEvent, true);
+document.addEventListener('input',  _autosaveFromEvent, true);
 
-// Sincroniza ao sair da página
-window.addEventListener('beforeunload', ()=>{ persistLocal(); });
+// Flush imediato ao sair / ocultar a aba (evita perder edição em andamento)
+window.addEventListener('beforeunload', ()=>{ try{ persistLocal(); }catch(_){} });
+window.addEventListener('pagehide',     ()=>{ try{ persistLocal(); flushAllNow(); }catch(_){} });
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='hidden'){ try{ persistLocal(); flushAllNow(); }catch(_){} }
+});
 
 // ═══ INIT ═══
 window.addEventListener('load', async ()=>{
