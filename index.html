@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -1285,22 +1286,12 @@ function openDrawer(initId){
   document.getElementById('drawer').classList.add('open');
 }
 function closeDrawer(){document.getElementById('drawerOv').classList.remove('open');document.getElementById('drawer').classList.remove('open');drawerInitiative=null;}
-async function saveDrawer(){
-  if(!drawerInitiative) return;
-  const init = drawerInitiative;
-  addAudit('Editou',init.id,'Dados atualizados via painel lateral');
-  try{ if(typeof persistLocal==='function') persistLocal(); }catch(_){}
-  try{ if(typeof saveInitiativeToSupabase==='function') await saveInitiativeToSupabase(init,true); }catch(_){}
-  try{ if(typeof saveAllInitiatives==='function') await saveAllInitiatives(true); }catch(_){}
-  try{ if(typeof saveModulesState==='function') await saveModulesState(true); }catch(_){}
-  try{ if(typeof saveProjectsState==='function') await saveProjectsState(true); }catch(_){}
-  showToast('Iniciativa salva com sucesso','success');
-  closeDrawer();
-  showTab(currentTab);
+function saveDrawer(){
+  if(drawerInitiative){addAudit('Editou',drawerInitiative.id,'Dados atualizados via painel lateral');showToast('Iniciativa salva com sucesso','success');closeDrawer();showTab(currentTab);}
 }
 function toggleAcc(hdr){hdr.classList.toggle('open');hdr.nextElementSibling.classList.toggle('open');}
-function addTaskDrawer(){if(!drawerInitiative)return;const t=prompt('Nome da tarefa:');if(!t)return;drawerInitiative.tasks.push({id:'t'+Date.now(),text:t,status:'Não Iniciado',pct:0});try{if(typeof scheduleAutosave==='function')scheduleAutosave();}catch(_){};openDrawer(drawerInitiative.id);}
-function updateTaskSt(initId,taskId,status){const init=initiatives.find(i=>i.id===initId);if(init){const task=init.tasks.find(t=>t.id===taskId);if(task)task.status=status;}try{if(typeof scheduleAutosave==='function')scheduleAutosave();}catch(_){}}
+function addTaskDrawer(){if(!drawerInitiative)return;const t=prompt('Nome da tarefa:');if(!t)return;drawerInitiative.tasks.push({id:'t'+Date.now(),text:t,status:'Não Iniciado',pct:0});openDrawer(drawerInitiative.id);}
+function updateTaskSt(initId,taskId,status){const init=initiatives.find(i=>i.id===initId);if(init){const task=init.tasks.find(t=>t.id===taskId);if(task)task.status=status;}}
 function recalcScore(){
   if(!drawerInitiative)return;
   const i=drawerInitiative;
@@ -1314,19 +1305,8 @@ function handleFileAttach(event){
 }
 
 // ═══ NEW INITIATIVE ═══
-function generateNextInitiativeId(){
-  const max = initiatives.reduce((acc, it) => {
-    const m = String(it.id || '').match(/^INIT-(\d+)$/);
-    return m ? Math.max(acc, parseInt(m[1], 10)) : acc;
-  }, 0);
-  let candidate = 'INIT-' + String(max + 1).padStart(3, '0');
-  while (initiatives.some(i => i.id === candidate)) {
-    candidate = 'INIT-' + String(parseInt(candidate.slice(5),10) + 1).padStart(3,'0');
-  }
-  return candidate;
-}
 function openNewInitiativeModal(defaultStatus){
-  const nextId = generateNextInitiativeId();
+  const nextId='INIT-'+String(initiatives.length+1).padStart(3,'0');
   openModal('➕ Nova Iniciativa',`<div class="ff mb-2"><label>ID (automático)</label><input class="f-readonly" readonly value="${nextId}"/></div>
   <div class="frow"><div class="ff"><label>Título *</label><input id="ni_t" placeholder="Nome da iniciativa"/></div><div class="ff"><label>Área *</label><select id="ni_a">${AREAS.map(a=>`<option>${a}</option>`).join('')}</select></div></div>
   <div class="frow">
@@ -2341,12 +2321,19 @@ function loadLocal(){
   }catch(e){ console.warn('Cache local inválido:', e); }
 }
 
-// --- Carrega dados do Supabase (e cai para cache local se falhar) --------
+// --- Carrega dados do Supabase (Supabase é a FONTE DA VERDADE) -----------
+// IMPORTANTE: SEMPRE sobrescreve estado local com o que vier do Supabase,
+// inclusive arrays vazios (para refletir exclusões em outras sessões).
+// O cache local só é usado se o Supabase estiver totalmente indisponível.
+let _supabaseLoadedOnce = false;
 async function loadFromSupabase(){
-  loadLocal(); // sempre aplica cache local antes (refresh resiliente)
-  if(!sb){ console.warn('Supabase indisponível — usando apenas cache local.'); return; }
+  if(!sb){
+    console.warn('Supabase indisponível — usando apenas cache local.');
+    if(!_supabaseLoadedOnce) loadLocal();
+    return;
+  }
   try{
-    console.log('[Supabase] Carregando dados...');
+    console.log('[Supabase] Carregando dados (fonte da verdade)...');
     const {data:cfg, error:e1} = await sb.from('app_config').select('*').eq('id',1).maybeSingle();
     if(e1) throw new Error('app_config: '+e1.message);
     if(cfg && cfg.config) appConfig = {...appConfig, ...cfg.config};
@@ -2354,38 +2341,79 @@ async function loadFromSupabase(){
     const {data:inits, error:e2} = await sb.from('initiatives').select('*');
     if(e2) throw new Error('initiatives: '+e2.message);
     if(Array.isArray(inits)){
-      // SEMPRE sobrescreve (mesmo se vazio) para refletir exclusões feitas em outra sessão
-      const fromDb = inits.map(r => r.data).filter(Boolean);
-      if(fromDb.length) initiatives = fromDb;
+      // SEMPRE sobrescreve (inclusive vazio) para refletir exclusões remotas
+      initiatives = inits.map(r => r.data).filter(Boolean);
     }
 
     const {data:state, error:e3} = await sb.from('app_state').select('*').eq('id','modules').maybeSingle();
     if(e3) throw new Error('app_state: '+e3.message);
     if(state && state.data){
       const m = state.data;
-      if(m.sipocData)        sipocData        = m.sipocData;
+      // Sempre sobrescreve (sem checar length) — DB é a verdade
+      if('sipocData' in m)        sipocData        = m.sipocData;
       if(Array.isArray(m.asisSteps))       asisSteps       = m.asisSteps;
       if(Array.isArray(m.tobeSteps))       tobeSteps       = m.tobeSteps;
-      if(m.leanScores)       leanScores       = m.leanScores;
+      if('leanScores' in m)       leanScores       = m.leanScores;
       if(Array.isArray(m.kaizens))         kaizens         = m.kaizens;
       if(Array.isArray(m.agendaEvents))    agendaEvents    = m.agendaEvents;
       if(Array.isArray(m.risks))           risks           = m.risks;
       if(Array.isArray(m.mappingSchedule)) mappingSchedule = m.mappingSchedule;
-      if(m.mereoData)        mereoData        = m.mereoData;
-      if(Array.isArray(m.users) && m.users.length) USERS = m.users;
+      if('mereoData' in m)        mereoData        = m.mereoData;
+      if(Array.isArray(m.users))  USERS = m.users;
     }
-    // Carrega usuários separadamente (chave dedicada)
+    // Carrega usuários separadamente (chave dedicada) — sempre sobrescreve
     const {data:usersRow} = await sb.from('app_state').select('*').eq('id','users').maybeSingle();
-    if(usersRow && Array.isArray(usersRow.data) && usersRow.data.length){
+    if(usersRow && Array.isArray(usersRow.data)){
       USERS = usersRow.data;
     }
+    _supabaseLoadedOnce = true;
     persistLocal();
     console.log('✓ Dados carregados do Supabase. Iniciativas:', initiatives.length, '| Usuários:', USERS.length);
   }catch(e){
     console.error('Falha ao carregar do Supabase:', e);
+    if(!_supabaseLoadedOnce) loadLocal();
     showToast('Erro ao carregar do Supabase: '+(e.message||e),'error');
   }
 }
+
+// --- Sincronização em tempo real (multi-usuário simultâneo) --------------
+// Usa Realtime do Supabase para detectar mudanças e recarregar a UI.
+// Fallback: polling a cada 20s caso Realtime não esteja habilitado.
+let _rtChannel = null;
+let _refreshTimer = null;
+let _refreshing = false;
+async function refreshFromRemote(){
+  if(_refreshing) return;
+  _refreshing = true;
+  try{
+    await loadFromSupabase();
+    if(typeof loadProjectsFromSupabase === 'function') await loadProjectsFromSupabase();
+    // Re-renderiza a view atual se o app já estiver logado
+    if(document.getElementById('app') && document.getElementById('app').style.display !== 'none'){
+      try{ if(typeof renderCurrentView === 'function') renderCurrentView();
+           else if(typeof showSection === 'function' && window.currentSection) showSection(window.currentSection);
+      }catch(_){}
+    }
+  } finally { _refreshing = false; }
+}
+function startRealtimeSync(){
+  if(!sb) return;
+  try{
+    if(_rtChannel){ try{ sb.removeChannel(_rtChannel); }catch(_){ } }
+    _rtChannel = sb.channel('vibra-sync')
+      .on('postgres_changes',{event:'*',schema:'public',table:'app_state'},   ()=>refreshFromRemote())
+      .on('postgres_changes',{event:'*',schema:'public',table:'initiatives'}, ()=>refreshFromRemote())
+      .on('postgres_changes',{event:'*',schema:'public',table:'app_config'},  ()=>refreshFromRemote())
+      .subscribe(s=>console.log('[Realtime]', s));
+  }catch(e){ console.warn('Realtime indisponível:', e); }
+  // Polling de segurança
+  clearInterval(_refreshTimer);
+  _refreshTimer = setInterval(refreshFromRemote, 20000);
+  // Recarrega ao voltar a aba
+  window.addEventListener('focus', refreshFromRemote);
+}
+window.startRealtimeSync = startRealtimeSync;
+window.refreshFromRemote = refreshFromRemote;
 
 // --- Salvar (com erro visível + cache local sempre) ----------------------
 async function saveConfigToSupabase(silent){
@@ -2472,25 +2500,15 @@ async function pingSupabase(){
 // --- Autosave debounced — chamado por qualquer mutação -------------------
 let _saveTimer=null;
 function scheduleAutosave(){
-  try{ persistLocal(); }catch(_){}
+  persistLocal();
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(()=>{
-    try{ saveAllInitiatives(true); }catch(_){}
-    try{ saveConfigToSupabase(true); }catch(_){}
-    try{ saveModulesState(true); }catch(_){}
-    try{ if(typeof saveProjectsState==='function') saveProjectsState(true); }catch(_){}
-  }, 350);
-}
-// Flush imediato (sem debounce) — usado em pagehide/visibilitychange/saveDrawer
-async function flushAllNow(){
-  try{ persistLocal(); }catch(_){}
-  try{ await saveAllInitiatives(true); }catch(_){}
-  try{ await saveConfigToSupabase(true); }catch(_){}
-  try{ await saveModulesState(true); }catch(_){}
-  try{ if(typeof saveProjectsState==='function') await saveProjectsState(true); }catch(_){}
+    saveAllInitiatives(true);
+    saveConfigToSupabase(true);
+    saveModulesState(true);
+  }, 800);
 }
 window.scheduleAutosave = scheduleAutosave;
-window.flushAllNow = flushAllNow;
 
 // --- Login APENAS LOCAL (Supabase Auth removido para evitar bloqueios) ---
 // Os usuários ficam persistidos na tabela app_state (id='users') do Supabase,
@@ -2603,25 +2621,16 @@ wrap('updateConfig'); wrap('updateWeight'); wrap('updateFormula'); wrap('updateL
 
 // Captura genérica: qualquer <input>/<select>/<textarea> dentro do app
 // dispara autosave (cobre os onchange inline que mutam objetos diretamente)
-// IMPORTANTE: ouvimos 'change' E 'input' para capturar digitação,
-// trocas de picklist, checkboxes, datas, etc — tudo é gravado.
-function _autosaveFromEvent(ev){
+document.addEventListener('change', (ev)=>{
   if(!currentUser) return;
   const t = ev.target;
   if(t && (t.tagName==='INPUT'||t.tagName==='SELECT'||t.tagName==='TEXTAREA')){
-    try{ persistLocal(); }catch(_){}
     scheduleAutosave();
   }
-}
-document.addEventListener('change', _autosaveFromEvent, true);
-document.addEventListener('input',  _autosaveFromEvent, true);
+}, true);
 
-// Flush imediato ao sair / ocultar a aba (evita perder edição em andamento)
-window.addEventListener('beforeunload', ()=>{ try{ persistLocal(); }catch(_){} });
-window.addEventListener('pagehide',     ()=>{ try{ persistLocal(); flushAllNow(); }catch(_){} });
-document.addEventListener('visibilitychange', ()=>{
-  if(document.visibilityState==='hidden'){ try{ persistLocal(); flushAllNow(); }catch(_){} }
-});
+// Sincroniza ao sair da página
+window.addEventListener('beforeunload', ()=>{ persistLocal(); });
 
 // ═══ INIT ═══
 window.addEventListener('load', async ()=>{
@@ -2816,11 +2825,13 @@ async function loadProjectsFromSupabase(){
   if(!sb) return;
   try{
     const {data:pr} = await sb.from('app_state').select('*').eq('id','projects').maybeSingle();
-    if(pr && pr.data && typeof pr.data==='object' && Object.keys(pr.data).length){
+    if(pr && pr.data && typeof pr.data==='object'){
       PROJECTS = pr.data;
     }
     const {data:pd} = await sb.from('app_state').select('*').eq('id','project_data').maybeSingle();
     if(pd && pd.data && typeof pd.data==='object'){
+      // Reescreve totalmente (não faz merge) — Supabase é a verdade
+      Object.keys(PROJECT_DATA).forEach(k=>delete PROJECT_DATA[k]);
       Object.assign(PROJECT_DATA, pd.data);
     }
     // Garante uma chave para cada projeto existente
@@ -2868,6 +2879,7 @@ const _origFinalizeLogin = finalizeLogin;
 finalizeLogin = function(){
   updateProjectSelector();
   _origFinalizeLogin.apply(this, arguments);
+  try{ startRealtimeSync(); }catch(e){ console.warn('startRealtimeSync:', e); }
 };
 window.finalizeLogin = finalizeLogin;
 
