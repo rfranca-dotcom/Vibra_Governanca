@@ -4,6 +4,8 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>VIBRA | Gestão Inteligente de Melhoria Contínua</title>
+<link rel="icon" type="image/png" href="/__l5e/assets-v1/8dfc3bf5-e279-46a6-92cc-78879023c6a5/vibra-logo.png"/>
+<link rel="apple-touch-icon" href="/__l5e/assets-v1/8dfc3bf5-e279-46a6-92cc-78879023c6a5/vibra-logo.png"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -2558,15 +2560,20 @@ async function pingSupabase(){
 }
 
 // --- Autosave debounced — chamado por qualquer mutação -------------------
+// IMPORTANTE: persiste TUDO (initiatives, config, modules, PROJECTS e PROJECT_DATA).
+// Sem isto, renomear um projeto em Configurações ou mexer no Módulo de Mapeamento
+// só atualizava em memória e era perdido ao recarregar.
 let _saveTimer=null;
 function scheduleAutosave(){
   persistLocal();
   clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(()=>{
-    saveAllInitiatives(true);
-    saveConfigToSupabase(true);
-    saveModulesState(true);
-  }, 800);
+  _saveTimer = setTimeout(async ()=>{
+    try{ await saveAllInitiatives(true); }catch(e){console.error('autosave initiatives:',e);}
+    try{ await saveConfigToSupabase(true); }catch(e){console.error('autosave config:',e);}
+    try{ await saveModulesState(true); }catch(e){console.error('autosave modules:',e);}
+    // ▼ FIX v19: persiste PROJECTS (nomes/descrições) e PROJECT_DATA (mapeamento, mereo, sipoc…)
+    try{ if(typeof saveProjectsState==='function') await saveProjectsState(true); }catch(e){console.error('autosave projects:',e);}
+  }, 600);
 }
 window.scheduleAutosave = scheduleAutosave;
 
