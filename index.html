@@ -74,15 +74,12 @@ a{text-decoration:none;color:var(--green-700);}
 @keyframes loadFill{from{width:0}to{width:100%}}
 
 
-/* ── ZYON BRAND (loading + login) ── */
-.zyon-brand{position:relative;display:inline-block;margin:0 auto;}
-.zyon-brand img{display:block;position:relative;z-index:2;filter:drop-shadow(0 2px 8px rgba(0,0,0,.35)) drop-shadow(0 0 18px rgba(255,255,255,.18));}
-.zyon-brand::before{content:"";position:absolute;inset:-30% -20%;background:radial-gradient(ellipse at center, rgba(212,237,218,.35) 0%, rgba(30,138,0,.18) 35%, transparent 70%);filter:blur(18px);z-index:1;animation:zyonGlow 4.5s ease-in-out infinite;}
-@keyframes zyonGlow{0%,100%{opacity:.6;transform:scale(1);}50%{opacity:1;transform:scale(1.05);}}
-.zyon-loading{width:340px;max-width:70vw;margin-bottom:18px;}
-.zyon-login-left{width:300px;max-width:80%;margin:0 auto 22px;}
-.zyon-sub{color:rgba(255,255,255,.55);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;margin-top:6px;text-align:center;font-weight:600;}
+<div class="zyon-brand zyon-login-left">
+  <img src="/caminho/para/logo-cliente-na-veia.png" alt="Cliente na Veia" />
+  <div class="zyon-sub">Cliente na Veia</div>
+</div>
 
+ 
 /* ── PRIMEIRO ACESSO ── */
 .first-access{margin-top:10px;border:1px solid var(--grey-200);border-radius:var(--radius-lg);background:var(--white);overflow:hidden;}
 .first-access-head{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;font-size:12px;font-weight:700;color:var(--green-800);background:linear-gradient(90deg,var(--green-50),var(--white));transition:background var(--t);}
