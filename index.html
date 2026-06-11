@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>VIBRA v14 | Governança de Melhoria Contínua</title>
+<title>VIBRA | Gestão Inteligente de Melhoria Contínua</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -439,7 +439,7 @@ table.dt input:focus,table.dt select:focus{border-color:var(--green-600);outline
       <p class="login-form-sub">Acesse o Painel de Governança e Controle</p>
       <div class="fg"><label>E-mail Corporativo</label><input type="email" id="loginEmail" value="admin@vibra.com"/></div>
       <div class="fg"><label>Senha</label><input type="password" id="loginPass" value="123456" onkeydown="if(event.key==='Enter')doLogin()"/></div>
-      <div style="display:flex;justify-content:flex-end;margin-bottom:6px;"><a href="#" style="font-size:11px;color:var(--grey-400);">Esqueci minha senha</a></div>
+      <!-- link "Esqueci minha senha" é injetado dinamicamente por injectForgotLink() (azul, funcional) -->
       <div class="login-error" id="loginError">E-mail ou senha inválidos</div>
       <button class="btn-login" onclick="doLogin()">Entrar</button>
       <div class="login-divider"></div>
@@ -797,7 +797,8 @@ function initCharts(){
   const prEl=document.getElementById('chartPriority');
   if(prEl)chartInstances.priority=new Chart(prEl,{type:'bar',data:{labels:Object.keys(pc),datasets:[{label:'Qtd',data:Object.values(pc),backgroundColor:['#ef4444','#FF6200','#eab308','#22c55e'],borderRadius:8,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}});
   const savEl=document.getElementById('chartSaving');
-  if(savEl)chartInstances.saving=new Chart(savEl,{type:'bar',data:{labels:MONTHS_PT.slice(0,6),datasets:[{label:'Meta',data:mereoData.indicators[0].months.meta.slice(0,6),backgroundColor:'rgba(1,56,32,0.7)',borderRadius:5},{label:'Real',data:mereoData.indicators[0].months.real.slice(0,6),backgroundColor:'rgba(255,98,0,0.85)',borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:11}}}},scales:{y:{beginAtZero:true}}}});
+  const mInd0=(mereoData&&mereoData.indicators||[])[0];
+  if(savEl&&mInd0)chartInstances.saving=new Chart(savEl,{type:'bar',data:{labels:MONTHS_PT.slice(0,6),datasets:[{label:'Meta',data:mInd0.months.meta.slice(0,6),backgroundColor:'rgba(1,56,32,0.7)',borderRadius:5},{label:'Real',data:mInd0.months.real.slice(0,6),backgroundColor:'rgba(255,98,0,0.85)',borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:11}}}},scales:{y:{beginAtZero:true}}}});
   const aM={};inits.forEach(i=>aM[i.area]=(aM[i.area]||0)+1);
   const aC=['#013820','#1E8A00','#FF6200','#1a56db','#a9c78e','#fced96','#75a7d2','#54585A'];
   const aEl=document.getElementById('chartArea');
@@ -1062,6 +1063,20 @@ function initGantt(){
 
 // ═══ MEREO ═══
 function renderMereo(){
+  if(!mereoData||!Array.isArray(mereoData.indicators))mereoData={indicators:[],selectedIndicator:0};
+  if(mereoData.selectedIndicator>=mereoData.indicators.length)mereoData.selectedIndicator=0;
+  if(mereoData.indicators.length===0){
+    return`<div class="sh mb-3">
+      <div><div class="sh-title">🎯 Ganhos & Metas — Mereo</div><div class="sh-sub">Acompanhamento mensal de indicadores de resultado</div></div>
+      ${currentUser&&currentUser.role==='admin'?`<button class="btn btn-primary btn-sm" onclick="addMereoInd()">+ Indicador</button>`:''}
+    </div>
+    <div class="card" style="text-align:center;padding:40px 20px;">
+      <div style="font-size:34px;margin-bottom:10px;">🎯</div>
+      <div style="font-weight:700;margin-bottom:6px;">Nenhum indicador cadastrado neste projeto</div>
+      <div class="text-muted" style="font-size:12.5px;margin-bottom:14px;">Crie o primeiro indicador para começar a acompanhar metas e ganhos mensais.</div>
+      ${currentUser&&currentUser.role==='admin'?`<button class="btn btn-primary" onclick="addMereoInd()">+ Criar primeiro indicador</button>`:'<div class="text-muted" style="font-size:12px;">Solicite ao administrador a criação dos indicadores.</div>'}
+    </div>`;
+  }
   const ind=mereoData.indicators[mereoData.selectedIndicator];
   const metaT=ind.months.meta.reduce((s,v)=>s+v,0);
   const realT=ind.months.real.reduce((s,v)=>s+v,0);
@@ -1107,7 +1122,7 @@ function renderMereo(){
   </div>`;
 }
 function initMereoCharts(){
-  const ind=mereoData.indicators[mereoData.selectedIndicator];
+  const ind=(mereoData&&mereoData.indicators||[])[mereoData?mereoData.selectedIndicator:0];if(!ind)return;
   const el=document.getElementById('mereoChart');if(!el)return;
   chartInstances.mereo=new Chart(el,{type:'bar',data:{labels:MONTHS_PT,datasets:[{label:'Meta',data:ind.months.meta,backgroundColor:'rgba(1,56,32,0.7)',borderRadius:5},{label:'Realizado',data:ind.months.real,backgroundColor:'rgba(255,98,0,0.85)',borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}},scales:{y:{beginAtZero:true}}}});
 }
@@ -2259,8 +2274,9 @@ function renderVisaoEstrategica(){
 }
 function initVisaoChart(){
   const el=document.getElementById('visaoSavingChart');if(!el)return;
-  const meta=mereoData.indicators[0].months.meta;
-  const real=mereoData.indicators[0].months.real;
+  const ind0=(mereoData&&mereoData.indicators||[])[0];if(!ind0)return;
+  const meta=ind0.months.meta;
+  const real=ind0.months.real;
   chartInstances.visao=new Chart(el,{type:'line',data:{labels:MONTHS_PT,datasets:[
     {label:'Meta',data:meta,borderColor:'rgba(1,56,32,0.9)',backgroundColor:'rgba(1,56,32,0.08)',borderWidth:2,fill:true,tension:.4,pointRadius:4,pointBackgroundColor:'rgba(1,56,32,0.9)'},
     {label:'Realizado',data:real,borderColor:'#FF6200',backgroundColor:'rgba(255,98,0,0.08)',borderWidth:2,fill:true,tension:.4,pointRadius:4,pointBackgroundColor:'#FF6200'},
@@ -3933,18 +3949,22 @@ window.resetReport=resetReport; window.previewReport=previewReport; window.expor
 (function(){
 /* strict mode desabilitado de propósito p/ compat com escopo da v15 */
 
-/* ── 1) LOADING — caption sem sobreposição (paleta VIBRA) ── */
+/* ── 1) LOADING — apenas logo + régua + subtítulo "Gestão Inteligente de Melhoria Contínua" em uma única linha ── */
 function applyLoadCaption(){
   const lb=document.querySelector('#loadScreen .load-box');
-  if(lb && !document.getElementById('vibraLoadCaption')){
-    Array.from(lb.childNodes).forEach(n=>{
-      if(n.nodeType===3 && n.textContent.trim()) n.textContent='';
-    });
-    const cap=document.createElement('div');
-    cap.id='vibraLoadCaption';
-    cap.innerHTML='<b>VIBRA</b><br><em>Governança de Melhoria Contínua</em>';
-    lb.appendChild(cap);
-  }
+  if(!lb) return;
+  // remove qualquer texto solto (ex.: "VIBRA", "Governança de Melhoria Contínua") deixado por versões anteriores
+  Array.from(lb.childNodes).forEach(n=>{
+    if(n.nodeType===3 && n.textContent.trim()) n.textContent='';
+  });
+  // remove caption antigo se existir
+  const old=document.getElementById('vibraLoadCaption');
+  if(old) old.remove();
+  const cap=document.createElement('div');
+  cap.id='vibraLoadCaption';
+  cap.textContent='Gestão Inteligente de Melhoria Contínua';
+  cap.style.cssText='margin-top:10px;font-size:12px;letter-spacing:.5px;color:#1c2530;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;font-weight:500;';
+  lb.appendChild(cap);
 }
 applyLoadCaption();
 window.addEventListener('load',applyLoadCaption);
@@ -4103,7 +4123,7 @@ function seedCCOB(){
   const detail = window.CCOB_DETAIL || {};
   if(!hasCCOB) initiatives.push(Object.assign({
     id:'CCOB-001',
-    projectId: (typeof currentProject!=='undefined'?currentProject:'p1'),
+    projectId: 'pNFC',
     title:'CCOB – Conciliação de Pagamentos B2B via TED',
     status:'Em Diagnóstico', priority:'Crítica', type:'Six Sigma (DMAIC)',
     area:'Crédito e Cobrança', leader:'Raquel França',
@@ -4185,7 +4205,7 @@ function seedCCOB(){
     const whyTxt = why ? ('5 Porquês — '+why.problema+':\n'+(why.porques||[]).map(x=>'  '+x).join('\n')+'\nRaiz: '+(why.raiz||'-')) : '';
     initiatives.push({
       id: p.id,
-      projectId: (typeof currentProject!=='undefined'?currentProject:'p1'),
+      projectId: 'pNFC',
       title: p.nome + ' (AS-IS '+p.asisDias+' → TO-BE '+p.tobeDias+')',
       status: statusMap[idx] || 'Em Diagnóstico',
       priority: idx<3?'Crítica':'Alta',
@@ -4242,7 +4262,7 @@ function _tryCCOBSeed(tries){
   tries = tries||0;
   if(typeof initiatives!=='undefined'){
     try{ seedCCOB(); }catch(e){ console.error('[VIBRA v17] seedCCOB erro:',e); }
-    try{ seedNFC();  }catch(e){ console.error('[VIBRA v17] seedNFC erro:',e);  }
+    /* seedNFC desativado em v18.3 — substituído por CCOB-001 + PR-001..PR-007 em pNFC */
     return;
   }
   if(tries>20){ console.warn('[VIBRA v17] initiatives indisponível após várias tentativas'); return; }
@@ -4569,9 +4589,9 @@ function seedCCOBInitiatives(){
   if(typeof initiatives==='undefined' || !Array.isArray(initiatives)){
     console.warn('[v18] initiatives ainda não disponível');return;
   }
-  // garante projeto pCCOB
-  if(typeof projects!=='undefined' && Array.isArray(projects) && !projects.some(p=>p.id==='pCCOB')){
-    projects.push({id:'pCCOB',name:'CCOB — Crédito & Cobrança',desc:'Iniciativas do CCOB (Crédito + Cobrança)'});
+  // garante que o projeto CCOB (p3) exista no seletor
+  if(typeof PROJECTS!=='undefined' && !PROJECTS.p3){
+    PROJECTS.p3 = {id:'p3',name:'CCOB - Crédito e Cobrança',desc:'Iniciativas do CCOB (Crédito + Cobrança)'};
   }
   let novos=0;
   window.CCOB_INITIATIVES.forEach((it,idx)=>{
@@ -4586,7 +4606,7 @@ function seedCCOBInitiatives(){
     } : null;
     const init = {
       id: it.id,
-      projectId: 'pCCOB',
+      projectId: 'p3',
       title: it.title,
       status: it.status||'Em Diagnóstico',
       priority: it.rich ? 'Alta' : 'Média',
@@ -5007,18 +5027,144 @@ function v18SaveFormula(btn){
 /* ═══════════════════════════════════════════════════════════════════
    8) BOOTSTRAP — espera initiatives e dispara seeds + patches
    ═══════════════════════════════════════════════════════════════════ */
+function v18NormalizeCCOB(){
+  // Correção definitiva:
+  //  • 25 processos CCOB (CCOB-CR-*, CCOB-CB-*) ficam no projeto CCOB (p3).
+  //  • CCOB-001 + PR-001..PR-007 ficam no Novo Fluxo de Contrato (pNFC).
+  if(typeof initiatives==='undefined' || !Array.isArray(initiatives)) return 0;
+  let fixed=0;
+  initiatives.forEach(i=>{
+    if(!i || typeof i.id!=='string') return;
+    let target=null;
+    if(/^CCOB-(CR|CB)-/.test(i.id))          target='p3';
+    else if(i.id==='CCOB-001' || /^PR-0\d/.test(i.id)) target='pNFC';
+    if(target && i.projectId!==target){
+      i.projectId=target; fixed++;
+      try{ if(typeof saveInitiativeToSupabase==='function') saveInitiativeToSupabase(i,true); }catch(e){}
+    }
+  });
+  if(fixed>0) console.log('[v18.2] '+fixed+' iniciativas CCOB/NFC realocadas (p3 / pNFC).');
+  return fixed;
+}
+async function v18CleanupLegacyNFC(){
+  // Remove os 7 cards legados NFC-01..NFC-07 (substituídos por CCOB-001 + PR-001..PR-007 em pNFC)
+  if(typeof initiatives==='undefined' || !Array.isArray(initiatives)) return 0;
+  const legacyIds = initiatives.filter(i=>i && typeof i.id==='string' && /^NFC-0\d$/.test(i.id)).map(i=>i.id);
+  if(!legacyIds.length) return 0;
+  for(let j=initiatives.length-1; j>=0; j--){
+    if(legacyIds.includes(initiatives[j].id)) initiatives.splice(j,1);
+  }
+  try{
+    if(typeof sb!=='undefined' && sb){
+      await sb.from('legacy_initiatives').delete().in('id', legacyIds.map(String));
+    }
+  }catch(e){ console.warn('[v18.3] cleanup NFC legacy:',e); }
+  console.log('[v18.3] Removidos '+legacyIds.length+' cards legados NFC-0x.');
+  return legacyIds.length;
+}
+function v18ForceSeedNFCCards(){
+  // Garante CCOB-001 + PR-001..PR-007 em pNFC, mesmo se já existirem com projectId errado.
+  if(typeof initiatives==='undefined' || !Array.isArray(initiatives)) return;
+  const detail = window.CCOB_DETAIL || {};
+  const procs = detail.processos || [];
+  // Força projectId nos existentes
+  initiatives.forEach(i=>{
+    if(!i || typeof i.id!=='string') return;
+    if(i.id==='CCOB-001' || /^PR-0\d/.test(i.id)){
+      if(i.projectId!=='pNFC'){
+        i.projectId='pNFC';
+        try{ saveInitiativeToSupabase(i,true); }catch(e){}
+      }
+    }
+  });
+  // Cria PR-* faltantes
+  const today=new Date().toISOString().slice(0,10);
+  const plus=(d)=>{const x=new Date();x.setDate(x.getDate()+d);return x.toISOString().slice(0,10);};
+  procs.forEach((p,idx)=>{
+    if(initiatives.some(i=>i.id===p.id)) return;
+    const novo = {
+      id:p.id, projectId:'pNFC',
+      title:p.nome+' (AS-IS '+p.asisDias+' → TO-BE '+p.tobeDias+')',
+      status:'Em Diagnóstico', priority: idx<3?'Crítica':'Alta',
+      type:'Six Sigma (DMAIC)', area:'Crédito e Cobrança',
+      leader:'Raquel França', sponsor:'Diretoria Comercial / Financeira',
+      description:p.resumo, solution:'Transição AS-IS → TO-BE conforme '+p.id,
+      impactNeg:4,impactCli:4,impactFin:4,automation:4,volume:4,roi:4,effort:3,complexity:3,score:70+idx,
+      startDate:today, endDate:plus(60+idx*15),
+      hcActual:1,hcEstimated:0.4,hcReached:0,
+      savingPrev:60000,savingReal:0, tasks:[], kpis:[], risks:[]
+    };
+    initiatives.push(novo);
+    try{ saveInitiativeToSupabase(novo,true); }catch(e){}
+  });
+  // Cria CCOB-001 se faltar
+  if(!initiatives.some(i=>i.id==='CCOB-001')){
+    try{ if(typeof seedCCOB==='function') seedCCOB(); }catch(e){}
+  }
+}
+async function v18EnsureCCOBData(){
+  if(typeof initiatives==='undefined' || !Array.isArray(initiatives)) return;
+  if(typeof PROJECTS!=='undefined' && !PROJECTS.p3){
+    PROJECTS.p3 = {id:'p3',name:'CCOB - Crédito e Cobrança',desc:''};
+  }
+  if(typeof PROJECTS!=='undefined' && !PROJECTS.pNFC){
+    PROJECTS.pNFC = {id:'pNFC',name:'Novo Fluxo de Contrato — Expansão de Postos',desc:''};
+    try{ if(typeof saveConfigToSupabase==='function') saveConfigToSupabase(true); }catch(e){}
+  }
+  try{ if(typeof seedCCOB==='function') seedCCOB(); }catch(e){ console.error('[v18.3] seedCCOB:',e); }
+  try{ seedCCOBInitiatives(); }catch(e){ console.error('[v18.3] seedCCOBInitiatives:',e); }
+  // NÃO chamamos seedNFC — foi substituído por CCOB-001 + PR-001..PR-007.
+  try{ await v18CleanupLegacyNFC(); }catch(e){}
+  try{ v18ForceSeedNFCCards(); }catch(e){ console.error('[v18.3] forceSeedNFC:',e); }
+  const moved = v18NormalizeCCOB();
+  try{ seedMereoIndicadores(); }catch(e){ console.error('[v18.3] seedMereo:',e); }
+  try{ if(typeof updateProjectSelector==='function') updateProjectSelector(); }catch(e){}
+  try{ if(typeof showTab==='function' && typeof currentTab!=='undefined') showTab(currentTab); }catch(e){}
+  const ccob = initiatives.filter(i=>i && i.projectId==='p3').length;
+  const nfc  = initiatives.filter(i=>i && i.projectId==='pNFC').length;
+  console.log('[v18.3] CCOB(p3)='+ccob+' · NFC(pNFC)='+nfc+' iniciativas (esperado 8 em pNFC).');
+}
+// Reaplica os seeds SEMPRE depois que os dados chegam do Supabase
+// (o load sobrescreve `initiatives`, então o seed precisa rodar depois dele).
+(function(){
+  function hook(tries){
+    tries=tries||0;
+    if(typeof window.loadFromSupabase!=='function'){
+      if(tries>40) return;
+      return setTimeout(()=>hook(tries+1), 300);
+    }
+    const _orig = window.loadFromSupabase;
+    const wrapped = async function(){
+      const r = await _orig.apply(this,arguments);
+      try{ v18EnsureCCOBData(); }catch(e){ console.error('[v18.1] pós-load:',e); }
+      return r;
+    };
+    window.loadFromSupabase = wrapped;
+    try{ loadFromSupabase = wrapped; }catch(e){}
+    console.log('[v18.1] Hook pós-load instalado.');
+  }
+  hook(0);
+})();
 function v18Boot(tries){
   tries=tries||0;
   if(typeof initiatives==='undefined' || typeof showTab!=='function'){
     if(tries>40) return;
     return setTimeout(()=>v18Boot(tries+1), 400);
   }
-  try{ seedCCOBInitiatives(); }catch(e){ console.error('[v18] seedCCOBInitiatives:',e); }
-  try{ seedMereoIndicadores(); }catch(e){ console.error('[v18] seedMereoIndicadores:',e); }
+  try{ v18EnsureCCOBData(); }catch(e){ console.error('[v18] ensureCCOB:',e); }
   try{ v18InjectTarefasButton(); }catch(e){ console.error('[v18] injectTarefasButton:',e); }
   console.log('[v18] Boot completo.');
 }
 setTimeout(()=>v18Boot(0), 2500);
+// rede de segurança: re-verifica os seeds nos primeiros 30s (login tardio)
+(function(){
+  let n=0;
+  const iv=setInterval(()=>{
+    n++;
+    try{ if(typeof initiatives!=='undefined') v18EnsureCCOBData(); }catch(e){}
+    if(n>=10) clearInterval(iv);
+  }, 3000);
+})();
 // re-injeta o botão se a tab bar for re-renderizada
 setInterval(()=>{ try{ v18InjectTarefasButton(); }catch(e){} }, 3000);
 </script>
