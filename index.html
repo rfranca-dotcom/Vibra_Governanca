@@ -3931,7 +3931,7 @@ window.resetReport=resetReport; window.previewReport=previewReport; window.expor
 
 <script>
 (function(){
-'use strict';
+/* strict mode desabilitado de propósito p/ compat com escopo da v15 */
 
 /* ── 1) LOADING — caption sem sobreposição (paleta VIBRA) ── */
 function applyLoadCaption(){
@@ -4001,12 +4001,7 @@ window.vibraTempPassword=async function(uid){
   u.password=tmp; u.mustChangePassword=true;
   try{ await saveConfigToSupabase(true); }catch(e){}
   try{ await navigator.clipboard.writeText(tmp); }catch(e){}
-  alert('Senha provisória de '+u.name+':
-
-'+tmp+'
-
-(copiada para área de transferência)
-O usuário deverá trocá-la no próximo login.');
+  alert('Senha provisória de '+u.name+':\n\n'+tmp+'\n\n(copiada para área de transferência)\nO usuário deverá trocá-la no próximo login.');
 };
 const _renderAccess=window.renderAccessPanel;
 if(_renderAccess){
@@ -4102,11 +4097,11 @@ setTimeout(refreshSLAAlerts, 2500);
 window.CCOB_DETAIL = window.CCOB_DETAIL || null; // será populado pelo bloco CCOB_DETAIL_INJECT abaixo
 function seedCCOB(){
   if(typeof initiatives==='undefined') return;
-  if(initiatives.some(i=>i.id==='CCOB-001')) return;
+  const hasCCOB = initiatives.some(i=>i.id==='CCOB-001');
   const today=new Date().toISOString().slice(0,10);
   const plus=(d)=>{const x=new Date();x.setDate(x.getDate()+d);return x.toISOString().slice(0,10);};
   const detail = window.CCOB_DETAIL || {};
-  initiatives.push(Object.assign({
+  if(!hasCCOB) initiatives.push(Object.assign({
     id:'CCOB-001',
     projectId: (typeof currentProject!=='undefined'?currentProject:'p1'),
     title:'CCOB – Conciliação de Pagamentos B2B via TED',
@@ -4176,23 +4171,217 @@ function seedCCOB(){
       {risk:'Sobreposição com SNEG',prob:'Média',mit:'Avaliação e delimitação clara de escopo'}
     ]
   }, detail.initiativeOverrides||{}));
-  try{ if(typeof saveInitiativeToSupabase==='function') saveInitiativeToSupabase(initiatives[initiatives.length-1],true); }catch(e){}
-  console.log('[VIBRA v17] CCOB-001 seeded; window.CCOB_DETAIL contém o detalhamento completo (KPIs A-X, SLA, 7 processos, 5 Porquês, Ishikawa).');
+  if(!hasCCOB){ try{ if(typeof saveInitiativeToSupabase==='function') saveInitiativeToSupabase(initiatives[initiatives.length-1],true); }catch(e){} }
+
+  /* ===== Expansão: 7 iniciativas-filhas (PR-001..PR-007) com 5 Porquês + Ishikawa ===== */
+  const procs = (detail.processos||[]);
+  const whys  = (detail.cincoPorques||[]);
+  const ishikawa = detail.ishikawa || detail.ishikawaCausas || null;
+  const statusMap = ['Em Diagnóstico','Em Diagnóstico','Em Diagnóstico','Desenvolvimento da Solução','Desenvolvimento da Solução','Sprints – Dev da Solução','Deploy – Entrega'];
+  procs.forEach((p,idx)=>{
+    if(initiatives.some(i=>i.id===p.id)) return;
+    const why = whys[idx % Math.max(whys.length,1)] || null;
+    const ishiTxt = ishikawa ? ('Ishikawa (6M):\n'+Object.entries(ishikawa).map(([k,v])=>'• '+k+': '+(Array.isArray(v)?v.join('; '):v)).join('\n')) : '';
+    const whyTxt = why ? ('5 Porquês — '+why.problema+':\n'+(why.porques||[]).map(x=>'  '+x).join('\n')+'\nRaiz: '+(why.raiz||'-')) : '';
+    initiatives.push({
+      id: p.id,
+      projectId: (typeof currentProject!=='undefined'?currentProject:'p1'),
+      title: p.nome + ' (AS-IS '+p.asisDias+' → TO-BE '+p.tobeDias+')',
+      status: statusMap[idx] || 'Em Diagnóstico',
+      priority: idx<3?'Crítica':'Alta',
+      type:'Six Sigma (DMAIC)', area:'Crédito e Cobrança',
+      leader:'Raquel França', sponsor:'Diretoria Comercial / Financeira',
+      description: p.resumo + (whyTxt? '\n\n'+whyTxt : '') + (ishiTxt? '\n\n'+ishiTxt : ''),
+      solution: 'Transição AS-IS ('+p.asisDias+') para TO-BE ('+p.tobeDias+') conforme detalhamento do processo '+p.id+'.',
+      impactNeg:4,impactCli:4,impactFin:4,automation:4,volume:4,roi:4,effort:3,complexity:3,score:70+idx,
+      startDate: today, endDate: plus(60+idx*15),
+      hcActual:1,hcEstimated:0.4,hcReached:0,
+      savingPrev:60000,savingReal:0,
+      pendencia: idx===0?'Validar premissas com Comercial':'',
+      qualitativeImpacts:'Redução de lead time e retrabalho no processo '+p.nome+'.',
+      notes:'Iniciativa derivada do detalhamento CCOB ('+p.id+'). Vinculada à iniciativa-mãe CCOB-001.',
+      tasks:[
+        {id:'t-'+p.id+'-1', text:'Mapear AS-IS detalhado', status:'Em Andamento', pct:40},
+        {id:'t-'+p.id+'-2', text:'Definir TO-BE com stakeholders', status:'Não Iniciado', pct:0},
+        {id:'t-'+p.id+'-3', text:'Identificar quick-wins', status:'Não Iniciado', pct:0},
+        {id:'t-'+p.id+'-4', text:'Plano de implantação', status:'Não Iniciado', pct:0}
+      ],
+      stakeholders:[
+        {name:'Líder do Processo',role:'Owner',influence:'Alta'},
+        {name:'Comercial',role:'Cliente interno',influence:'Alta'},
+        {name:'TI / Automação',role:'Habilitador',influence:'Média'}
+      ],
+      asis:[{step:'Estado atual', pain:'Lead time '+p.asisDias, impact:'Alto'}],
+      tobe:[{step:'Estado futuro', action:'Reduzir para '+p.tobeDias}],
+      kpis:[{name:'Lead time', baseline:p.asisDias, target:p.tobeDias}],
+      risks: why ? [{risk: why.raiz, prob:'Alta', mit:'Plano de ação CCOB-001'}] : []
+    });
+    try{ if(typeof saveInitiativeToSupabase==='function') saveInitiativeToSupabase(initiatives[initiatives.length-1],true); }catch(e){}
+  });
+
+  // força re-render das telas que dependem de initiatives
+  try{
+    ['renderKanban','renderInitiatives','renderPriorizacao','renderDashboard','renderTable','renderAll','render']
+      .forEach(fn=>{ try{ if(typeof window[fn]==='function') window[fn](); }catch(e){} });
+  }catch(e){}
+  console.log('[VIBRA v17] CCOB-001 + '+procs.length+' iniciativas-filhas seeded.');
   setTimeout(()=>{
     const pend=[
       'BPMN gráfico (apenas marcos textuais foram inseridos)',
       'Datas reais do projeto (assumido hoje + 120 dias)',
       'Lista nominal de stakeholders por nome (foram inseridos papéis)',
-      'Itens das seções de governança/reuniões do material (são metodologia, não iniciativas)',
-      'Valores nominais individuais por linha de orçamento (consolidado em saving previsto e investimento)'
+      'Itens das seções de governança/reuniões (são metodologia, não iniciativas)',
+      'Valores nominais individuais por linha de orçamento (consolidado em saving previsto)'
     ];
-    if(typeof showToast==='function') showToast('CCOB-001 carregada · '+pend.length+' itens pendentes (veja console)','info');
-    console.warn('[VIBRA v17] Itens não inseridos por falta de dado definitivo:
-• '+pend.join('
-• '));
+    if(typeof showToast==='function') showToast('CCOB-001 carregada · '+pend.length+' itens pendentes (ver console)','info');
+    console.warn('[VIBRA v17] Itens pendentes:\n• '+pend.join('\n• '));
   },1500);
 }
-setTimeout(seedCCOB, 3000);
+// roda assim que o app estiver pronto e tenta novamente caso initiatives ainda não exista
+function _tryCCOBSeed(tries){
+  tries = tries||0;
+  if(typeof initiatives!=='undefined'){
+    try{ seedCCOB(); }catch(e){ console.error('[VIBRA v17] seedCCOB erro:',e); }
+    try{ seedNFC();  }catch(e){ console.error('[VIBRA v17] seedNFC erro:',e);  }
+    return;
+  }
+  if(tries>20){ console.warn('[VIBRA v17] initiatives indisponível após várias tentativas'); return; }
+  setTimeout(()=>_tryCCOBSeed(tries+1), 500);
+}
+setTimeout(()=>_tryCCOBSeed(0), 1500);
+
+/* ── 5b) SEED PROJETO NFC — Novo Fluxo de Contrato — Expansão de Postos ── */
+window.NFC_DETAIL = {
+  projeto: {id:'pNFC', name:'Novo Fluxo de Contrato — Expansão de Postos',
+    desc:'Migração CRM Salesforce → Outsystem (orquestrador). 7 processos redesenhados na jornada da oportunidade à nova imagem. Meta: 600 postos embandeirados, redução de 56→22 dias (-34 dias), 78% automação.'},
+  processos:[
+    {id:'NFC-01', nome:'Confecção da Proposta', asis:'18 dias', tobe:'6 dias',
+     resumo:'Auto-carga via SAP (CNPJ), cotação modular Posto/Franquias em paralelo, simulação TIR/VPL automática, distribuição automática para SNEG.',
+     dores:['+10 abas para acessar dados','+80 campos de digitação manual','Relatórios auxiliares externos','Cotação Posto+Franquia sequencial'],
+     ganhos:{hcGain:4.6, rrGain:270000, autom:'85%'},
+     porques:['1) Volume alto de campos manuais.','2) Sem integração entre Salesforce/SAP.','3) Franquias tratadas em fluxo serial.','4) Cotações precisam de planilhas externas.','5) Tarefa criada manualmente.'],
+     raiz:'Salesforce não orquestra ponta-a-ponta; cada etapa exige reentrada de dado.'},
+    {id:'NFC-02', nome:'Análise DDI', asis:'9 dias', tobe:'6 dias',
+     resumo:'Validação automática dos 15 critérios DDI com exceções para humano. Antecipação fora da jornada principal.',
+     dores:['Sem integração CRM↔DDI','Análise discricionária de 15 critérios','Sem motor de regras'],
+     ganhos:{hcGain:0.7, rrGain:51000, autom:'70%'},
+     porques:['1) DDI roda em sistema isolado.','2) Decisão manual demora 180 min.','3) Critérios não codificados.','4) Pareceres sem padronização.','5) Sem trilha de auditoria automatizada.'],
+     raiz:'Critérios DDI não codificados em motor de regras.'},
+    {id:'NFC-03', nome:'Recebimento de Documentos', asis:'13 dias', tobe:'8 dias',
+     resumo:'Portal Único: cliente anexa documentos; checklist automático de pendências por etapa com OCR/IA.',
+     dores:['Cobrança manual por e-mail','Anexos descentralizados (tarefas/Netlex/oportunidades)','Sem rastreabilidade de pendências'],
+     ganhos:{hcGain:2.0, rrGain:147000, autom:'80%'},
+     porques:['1) Documentos pedidos por e-mail.','2) Cliente não tem self-service.','3) Anexos espalhados em 3 lugares.','4) Pendências sem dashboard.','5) Reanálise frequente por documento incompleto.'],
+     raiz:'Ausência de portal único de documentos do revendedor.'},
+    {id:'NFC-04', nome:'Ajustes Política Comercial', asis:'18 dias', tobe:'4 dias',
+     resumo:'Motor de regras no Outsystems validando os 26 parâmetros automaticamente, com segmentação por perfil.',
+     dores:['Alçadas acumulativas geram retrabalho','Sem flexibilização por perfil','Negociação iterativa com EV/cliente'],
+     ganhos:{hcGain:3.2, rrGain:230000, autom:'90%'},
+     porques:['1) 26 parâmetros conferidos manualmente.','2) Alçadas se acumulam.','3) Política não tem motor.','4) Sem segmentação de cliente.','5) Decisões dependem de e-mail/Teams.'],
+     raiz:'Política comercial não traduzida em regras executáveis.'},
+    {id:'NFC-05', nome:'Análise de Proposta (PCR)', asis:'4 dias', tobe:'1 dia',
+     resumo:'PCR sai da planilha paralela e ganha módulo nativo. Gate SNEG reduzido para propostas segmentadas.',
+     dores:['PCR em planilha paralela','Regras dispersas em políticas','Validação sem suporte sistêmico'],
+     ganhos:{hcGain:1.2, rrGain:85000, autom:'75%'},
+     porques:['1) PCR depende de planilha humana.','2) Regras espalhadas em documentos.','3) Sem integração com cotação.','4) Validação manual de 2h por caso.','5) Sem score automático de proposta.'],
+     raiz:'PCR não nativa no fluxo digital.'},
+    {id:'NFC-06', nome:'Aprovação da Proposta', asis:'8 dias', tobe:'2 dias',
+     resumo:'Simplificação de critérios de alçada baseados na TLC; eliminação de alçadas acumulativas; paralelização.',
+     dores:['Encaminhamento manual por e-mail/Teams','Aprovação sequencial trava por dias','Sem visibilidade do gargalo'],
+     ganhos:{hcGain:1.5, rrGain:110000, autom:'80%'},
+     porques:['1) Encaminhamento manual.','2) Aprovadores em série.','3) Sem SLA monitorado.','4) Falta visibilidade ao EV.','5) Sem regra de auto-aprovação para faixas seguras.'],
+     raiz:'Workflow de alçadas sequencial e fora de sistema.'},
+    {id:'NFC-07', nome:'Confecção da Minuta', asis:'4 dias', tobe:'1 dia',
+     resumo:'Geração automática de minuta, integração Netlex/DocuSign, revisão por template, 90% de automação.',
+     dores:['Redigitação a partir da proposta','Risco de inconsistência com a proposta','Revisão jurídica manual'],
+     ganhos:{hcGain:2.1, rrGain:155000, autom:'90%'},
+     porques:['1) Minuta digitada do zero.','2) Sem template parametrizado.','3) Cláusulas em PDF estático.','4) Sem integração Netlex.','5) Assinatura fora do fluxo.'],
+     raiz:'Minuta não gerada a partir dos dados estruturados da proposta.'},
+  ],
+  ishikawa:{
+    Método:['Fluxo sequencial entre etapas','26 parâmetros comerciais conferidos manualmente','Alçadas acumulativas'],
+    Máquina:['Salesforce sem integração nativa com SAP/DDI/Netlex','Planilhas paralelas para PCR'],
+    Mão_de_obra:['EV preenchendo +80 campos','Analistas DDI validando 15 critérios manualmente'],
+    Material:['Documentos do cliente descentralizados','Política comercial em PDF'],
+    Medida:['Sem SLA monitorado por etapa','Sem dashboard de pendências'],
+    Meio_ambiente:['Pressão de 600 postos a embandeirar','Janela comercial sensível ao tempo']
+  }
+};
+
+function seedNFC(){
+  if(typeof initiatives==='undefined' || typeof PROJECTS==='undefined') return;
+  const det = window.NFC_DETAIL; if(!det) return;
+  // 1) Cria/atualiza projeto pNFC
+  if(!PROJECTS[det.projeto.id]){
+    PROJECTS[det.projeto.id] = {...det.projeto};
+    try{ if(typeof saveConfigToSupabase==='function') saveConfigToSupabase(true); }catch(e){}
+  }
+  const today=new Date().toISOString().slice(0,10);
+  const plus=(d)=>{const x=new Date();x.setDate(x.getDate()+d);return x.toISOString().slice(0,10);};
+  const statusMap=['Em Diagnóstico','Em Diagnóstico','Desenvolvimento da Solução','Desenvolvimento da Solução','Sprints – Dev da Solução','Sprints – Dev da Solução','Deploy – Entrega'];
+  const ishi='Ishikawa (6M):\n'+Object.entries(det.ishikawa).map(([k,v])=>'• '+k.replace('_',' ')+': '+v.join('; ')).join('\n');
+  let added=0;
+  det.processos.forEach((p,idx)=>{
+    if(initiatives.some(i=>i.id===p.id)) return;
+    const whyTxt='5 Porquês — Por que '+p.nome+' leva '+p.asis+'?\n'+p.porques.map(x=>'  '+x).join('\n')+'\nRaiz: '+p.raiz;
+    const dorTxt='Dores AS-IS:\n• '+p.dores.join('\n• ');
+    initiatives.push({
+      id:p.id, projectId:det.projeto.id,
+      title:p.nome+' (AS-IS '+p.asis+' → TO-BE '+p.tobe+')',
+      status: statusMap[idx]||'Em Diagnóstico',
+      priority: idx<2?'Crítica':(idx<5?'Alta':'Média'),
+      type:'Lean / Outsystem',
+      area:'Comercial / SNEG / SPCOM',
+      leader:'Líder do Processo '+p.id, sponsor:'Diretoria Comercial',
+      description: p.resumo+'\n\n'+dorTxt+'\n\n'+whyTxt+'\n\n'+ishi,
+      solution:'Migração Salesforce→Outsystem ('+p.ganhos.autom+' automação). Redução de '+p.asis+' para '+p.tobe+'.',
+      impactNeg:4,impactCli:5,impactFin:5,automation:5,volume:5,roi:5,effort:3,complexity:4,score:75+idx,
+      startDate: today, endDate: plus(45+idx*20),
+      hcActual: p.ganhos.hcGain+0.5, hcEstimated: 0.5, hcReached:0,
+      savingPrev: p.ganhos.rrGain, savingReal:0,
+      pendencia: idx===0?'Validar integração Outsystem ↔ SAP':'',
+      qualitativeImpacts:'Experiência do EV/Revendedor, padronização e auditabilidade.',
+      notes:'Iniciativa do projeto Novo Fluxo de Contrato — Expansão de Postos. Detalhe completo em window.NFC_DETAIL.',
+      tasks:[
+        {id:'t-'+p.id+'-1',text:'Mapear AS-IS detalhado',status:'Concluído',pct:100},
+        {id:'t-'+p.id+'-2',text:'Definir TO-BE com stakeholders',status:'Em Andamento',pct:idx<3?70:30},
+        {id:'t-'+p.id+'-3',text:'Especificar requisitos Outsystem',status:idx<3?'Em Andamento':'Não Iniciado',pct:idx<3?40:0},
+        {id:'t-'+p.id+'-4',text:'Desenvolvimento e testes',status:'Não Iniciado',pct:0},
+        {id:'t-'+p.id+'-5',text:'Piloto com EVs',status:'Não Iniciado',pct:0},
+        {id:'t-'+p.id+'-6',text:'Rollout 600 postos',status:'Não Iniciado',pct:0}
+      ],
+      stakeholders:[
+        {name:'Executivos de Vendas (EV)',role:'Usuário-chave',influence:'Alta'},
+        {name:'SNEG',role:'Cliente interno',influence:'Alta'},
+        {name:'SPCOM',role:'Cliente interno',influence:'Alta'},
+        {name:'TI / Outsystem',role:'Habilitador',influence:'Alta'},
+        {name:'Engenharia (Nova Imagem)',role:'Apoio',influence:'Média'},
+        {name:'Jurídico',role:'Apoio',influence:'Média'}
+      ],
+      asis: p.dores.map(d=>({step:p.nome, pain:d, impact:'Alto'})),
+      tobe:[{step:'TO-BE '+p.nome, action:p.resumo}],
+      kpis:[
+        {name:'Lead time', baseline:p.asis, target:p.tobe},
+        {name:'Automação', baseline:'0%', target:p.ganhos.autom},
+        {name:'HC liberado (FTE)', baseline:'0', target:String(p.ganhos.hcGain)},
+        {name:'Saving anual (R$)', baseline:'0', target:p.ganhos.rrGain.toLocaleString('pt-BR')}
+      ],
+      risks:[
+        {risk:p.raiz, prob:'Alta', mit:'Plano de migração Outsystem'},
+        {risk:'Adoção pelos EVs', prob:'Média', mit:'Treinamento + change management'}
+      ]
+    });
+    added++;
+    try{ if(typeof saveInitiativeToSupabase==='function') saveInitiativeToSupabase(initiatives[initiatives.length-1],true); }catch(e){}
+  });
+  try{
+    ['renderKanban','renderInitiatives','renderPriorizacao','renderDashboard','renderTable','renderAll','render','renderProjectSelector']
+      .forEach(fn=>{ try{ if(typeof window[fn]==='function') window[fn](); }catch(e){} });
+  }catch(e){}
+  console.log('[VIBRA v17] NFC project + '+added+' iniciativas seeded (pNFC).');
+  if(added && typeof showToast==='function') showToast('Projeto "Novo Fluxo de Contrato" carregado · '+added+' iniciativas','success');
+}
+
 
 /* ── 6) Forçar troca de senha provisória no 1º login ── */
 const _wrapLogin = window.doLogin;
@@ -4218,3 +4407,618 @@ if(typeof _wrapLogin==='function'){
 console.log('[VIBRA v17] CCOB_DETAIL injetado:', Object.keys(window.CCOB_DETAIL));</script>
 </body>
 </html>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     VIBRA v18 — Aditivo (não altera código v17)
+     ▸ Seed 25 iniciativas CCOB (12 Crédito + 13 Cobrança)
+     ▸ Aba "Tarefas" (timeline + tabelas por projeto + indicadores + CRUD)
+     ▸ Indicadores Mereo: GTESG00207, GTESG00208 (fórmula editável + tooltip)
+     ▸ Botão "📋 Tarefas" no card da iniciativa → abre aba Tarefas no projeto
+     ═══════════════════════════════════════════════════════════════════ -->
+<style>
+.v18-grid{display:grid;gap:14px;}
+.v18-card{background:#fff;border:1px solid var(--grey-200);border-radius:10px;padding:14px;}
+.v18-mini{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1px solid var(--grey-200);border-radius:8px;background:#fff;min-width:130px;}
+.v18-mini .lbl{font-size:10.5px;color:var(--grey-500);text-transform:uppercase;letter-spacing:.4px;}
+.v18-mini .val{font-size:18px;font-weight:700;color:var(--grey-900);}
+.v18-tl{display:flex;gap:10px;overflow-x:auto;padding:8px 2px;}
+.v18-tl .item{min-width:230px;border-left:4px solid var(--green-700);background:#f8faf6;border-radius:6px;padding:10px 12px;}
+.v18-tl .item .nm{font-size:12px;font-weight:700;color:var(--grey-900);}
+.v18-tl .item .dt{font-size:11px;color:var(--grey-600);margin-top:3px;}
+.v18-pb{height:8px;background:var(--grey-100);border-radius:4px;overflow:hidden;}
+.v18-pb-f{height:100%;background:linear-gradient(90deg,var(--green-700),#ff6200);transition:width .3s;}
+.v18-tbl{width:100%;font-size:12px;border-collapse:collapse;}
+.v18-tbl th{background:var(--green-800);color:#fff;font-weight:600;padding:8px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;}
+.v18-tbl td{padding:7px 8px;border-bottom:1px solid var(--grey-100);vertical-align:middle;}
+.v18-tbl tr:hover td{background:#fafafa;}
+.v18-tbl input,.v18-tbl select{width:100%;padding:4px 6px;border:1px solid transparent;background:transparent;font-size:12px;border-radius:4px;}
+.v18-tbl input:focus,.v18-tbl select:focus{border-color:var(--green-700);background:#fff;outline:none;}
+.v18-chip{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:600;}
+.v18-chip.crit{background:#fee2e2;color:#991b1b;}
+.v18-chip.alta{background:#fef3c7;color:#92400e;}
+.v18-chip.med{background:#dbeafe;color:#1e40af;}
+.v18-chip.baixa{background:#dcfce7;color:#166534;}
+.v18-chip.ok{background:#dcfce7;color:#166534;}
+.v18-chip.wip{background:#dbeafe;color:#1e40af;}
+.v18-chip.pend{background:#f3f4f6;color:#374151;}
+.v18-tip{position:relative;display:inline-block;cursor:help;color:var(--green-700);font-size:11px;margin-left:5px;}
+.v18-tip:hover::after{content:attr(data-tip);position:absolute;z-index:999;left:50%;transform:translateX(-50%);top:100%;margin-top:6px;background:#1f2937;color:#fff;padding:8px 10px;border-radius:6px;font-size:11px;white-space:pre-wrap;max-width:340px;width:max-content;box-shadow:0 4px 12px rgba(0,0,0,.18);font-weight:500;line-height:1.45;}
+.v18-task-btn{display:inline-flex;align-items:center;gap:3px;padding:3px 7px;background:rgba(1,56,32,.08);border-radius:5px;font-size:10.5px;font-weight:600;color:var(--green-800);cursor:pointer;border:1px solid rgba(1,56,32,.15);}
+.v18-task-btn:hover{background:rgba(1,56,32,.15);}
+</style>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   1) DEFINIÇÃO DAS 25 INICIATIVAS CCOB (Crédito + Cobrança)
+   ═══════════════════════════════════════════════════════════════════ */
+window.CCOB_INITIATIVES = [
+  // ─── CRÉDITO ───
+  {id:'CCOB-CR-01',title:'Fluxo Concessão Limite',area:'Crédito',rich:true,
+    desc:'Fluxo crítico de concessão de limite de crédito para 17 mil clientes — R$ 16,5 bilhões em exposição.',
+    sol:'Padronização do fluxo com gates automatizados e dashboard único de acompanhamento.',
+    volume:'17 mil clientes ativos',asis:'Variável',tobe:'Padronizado',hcA:1.0,hcE:0.6,saving:80000,status:'Em Diagnóstico',
+    porques:['Por que o fluxo é heterogêneo? Cada perfil tem regra própria.','Por que? Política comercial muda por segmento.','Por que? Não há motor de regras central.','Por que? Decisões dispersas em planilhas.','Por que? Falta governança única do crédito.'],
+    raiz:'Ausência de motor de regras central para concessão.'},
+  {id:'CCOB-CR-02',title:'Análise de Crédito (minutas, garantias, balanço)',area:'Crédito',rich:true,
+    desc:'Análise de crédito de novos clientes envolvendo minutas, garantias e balanço/DRE — 11.300 análises/ano.',
+    sol:'OCR/IA para extração de balanço + checklist automatizado de minutas/garantias.',
+    volume:'11.300/ano',asis:'Manual com bureau',tobe:'OCR + IA',hcA:1.5,hcE:0.7,saving:120000,status:'Em Diagnóstico',
+    porques:['Por que demora? Documentos chegam em formatos heterogêneos.','Por que? Sem padronização de envio pelo EV.','Por que? Não há portal único do cliente.','Por que? Validação manual de balanço.','Por que? Sem OCR/IA aplicada à leitura financeira.'],
+    raiz:'Validação documental 100% manual sem OCR/IA.'},
+  {id:'CCOB-CR-03',title:'Análise Prévia para Antecipação de Bonificação',area:'Crédito',rich:true,
+    desc:'Análise prévia antes da liberação de antecipação de bonificação — 1.000/ano.',
+    sol:'Score automatizado com regras parametrizáveis.',
+    volume:'1.000/ano',asis:'Manual',tobe:'Score auto',hcA:0.4,hcE:0.15,saving:35000,status:'Em Diagnóstico',
+    porques:['Por que análise manual? Critérios não consolidados.','Por que? Política definida em documento texto.','Por que? Sem sistema com regras de antecipação.','Por que? Volume considerado baixo para investir.','Por que? Custo de oportunidade não medido.'],
+    raiz:'Custo de processo manual não monetizado.'},
+  {id:'CCOB-CR-04',title:'Liberação de Parcela de Antecipação de Bonificação',area:'Crédito',rich:true,
+    desc:'Liberação operacional de parcelas de antecipação — 1.500/ano.',
+    sol:'Workflow automatizado com aprovação digital.',
+    volume:'1.500/ano',asis:'Manual',tobe:'Workflow digital',hcA:0.5,hcE:0.2,saving:42000,status:'Em Diagnóstico',
+    porques:['Por que demora liberação? Aprovação por e-mail.','Por que? Sem workflow formal.','Por que? Sistema sem fluxo de aprovação digital.','Por que? Liberação depende de pessoa específica.','Por que? Falta de substitutos.'],
+    raiz:'Dependência de pessoa-chave em fluxo não digital.'},
+  {id:'CCOB-CR-05',title:'Análise Perfil para Antecipação e/ou Nova Imagem',area:'Crédito',rich:true,
+    desc:'Análise de perfil do cliente para antecipação e/ou implantação de Nova Imagem — 2.000/ano.',
+    sol:'Integração com módulo de governança e score unificado.',
+    volume:'2.000/ano',asis:'Manual + Excel',tobe:'Score integrado',hcA:0.8,hcE:0.3,saving:65000,status:'Em Diagnóstico',
+    porques:['Por que conflito com Novo Fluxo de Contrato? KPIs sobrepostos.','Por que? Sem harmonização entre projetos.','Por que? Cada projeto mede seu próprio score.','Por que? Falta governança de indicadores.','Por que? Não há comitê integrador.'],
+    raiz:'KPIs conflitantes entre CCOB e Expansão de Postos.'},
+  {id:'CCOB-CR-06',title:'Validação de Garantias/Contratos de Parcelamento',area:'Crédito',rich:true,
+    desc:'Análise prévia e validação de garantias — 820 análises/ano · tempo médio 26 dias.',
+    sol:'Pré-checklist automatizado + OCR de certidões + integração cartório.',
+    volume:'820/ano · 26 dias médios',asis:'26 dias',tobe:'≤10 dias',hcA:1.2,hcE:0.5,saving:95000,status:'Em Diagnóstico',
+    porques:['Por que 26 dias? Análise de minutas e certidões manual.','Por que? Documentos chegam fora de padrão.','Por que? Cliente envia por e-mail.','Por que? Sem portal de upload + OCR.','Por que? Interface fragmentada CCOB/SNEG.'],
+    raiz:'Interfaces fragmentadas entre CCOB e SNEG sem portal único.'},
+  {id:'CCOB-CR-07',title:'Liberação de Garantias',area:'Crédito',rich:false,
+    desc:'Liberação operacional de garantias após cumprimento contratual.',
+    volume:'A levantar',hcA:0.3,hcE:0.15,saving:18000,status:'Em Diagnóstico'},
+  {id:'CCOB-CR-08',title:'Análise Proativa para Renovação de Crédito',area:'Crédito',rich:true,
+    desc:'Renovação automática de limite — 14.500 análises/ano (83% automatizadas).',
+    sol:'Elevar automação para 95% e revisar os 17% manuais.',
+    volume:'14.500/ano (83% auto)',asis:'83% auto',tobe:'95% auto',hcA:0.7,hcE:0.25,saving:55000,status:'Desenvolvimento da Solução',
+    porques:['Por que 17% ainda manual? Exceções de score.','Por que? Regras pontuais não automatizadas.','Por que? Caso excepcional sem motor de regras.','Por que? Manutenção do motor reativa.','Por que? Sem squad dedicado.'],
+    raiz:'Exceções de regra mantidas manualmente sem squad dedicado.'},
+  {id:'CCOB-CR-09',title:'Atendimento por Ligação ao EV/LT (pedidos de prioridade)',area:'Crédito',rich:false,
+    desc:'Atendimento telefônico para EVs/LTs com pedidos de priorização.',
+    volume:'Reativo',hcA:0.5,hcE:0.2,saving:25000,status:'Em Diagnóstico'},
+  {id:'CCOB-CR-10',title:'Orientação por Ligação ao EV/LT (cartório, minutas)',area:'Crédito',rich:false,
+    desc:'Orientação técnica por telefone para EVs e LTs em assuntos de cartório/minutas.',
+    volume:'Reativo',hcA:0.4,hcE:0.15,saving:18000,status:'Em Diagnóstico'},
+  {id:'CCOB-CR-11',title:'Tratamento do Relatório Mensal dos Clientes com Mais Bloqueios',area:'Crédito',rich:false,
+    desc:'Análise mensal de clientes com maior recorrência de bloqueio de pedidos.',
+    volume:'Mensal',hcA:0.3,hcE:0.1,saving:22000,status:'Em Diagnóstico'},
+  {id:'CCOB-CR-12',title:'Ampliar Parceria Externa para Formalização de Garantias',area:'Crédito',rich:false,
+    desc:'Expansão para múltiplos despachantes além do Amaral Maia (atual fornecedor único).',
+    volume:'Atual: 1 fornecedor',hcA:0.2,hcE:0.1,saving:30000,status:'Em Diagnóstico'},
+
+  // ─── COBRANÇA ───
+  {id:'CCOB-CB-01',title:'Fluxo de Liberação de Pedidos',area:'Cobrança',rich:false,
+    desc:'Liberação manual de pedidos bloqueados por exceção comercial.',
+    volume:'Reativo',hcA:0.5,hcE:0.2,saving:28000,status:'Em Diagnóstico'},
+  {id:'CCOB-CB-02',title:'Análise de Propostas de Acordo',area:'Cobrança',rich:false,
+    desc:'Análise de propostas de acordo (administrativo e judicial).',
+    volume:'Reativo',hcA:0.6,hcE:0.25,saving:35000,status:'Em Diagnóstico'},
+  {id:'CCOB-CB-03',title:'Fluxos Financeiros (DTM e Absorção)',area:'Cobrança',rich:false,
+    desc:'Operacionalização de DTM e Absorção financeira.',
+    volume:'Recorrente',hcA:0.4,hcE:0.2,saving:22000,status:'Em Diagnóstico'},
+  {id:'CCOB-CB-04',title:'Boletos Emitidos',area:'Cobrança',rich:false,
+    desc:'Emissão de boletos de cobrança avulsa.',
+    volume:'Alto volume',hcA:0.3,hcE:0.1,saving:18000,status:'Em Diagnóstico'},
+  {id:'CCOB-CB-05',title:'Recuperação de Débitos (Não Judicial)',area:'Cobrança',rich:true,
+    desc:'Negociação administrativa de débitos — 630 acordos/ano · R$ 220 milhões.',
+    sol:'CRM de cobrança com motor de réguas automatizadas.',
+    volume:'630 acordos/ano · R$ 220 MLN',asis:'Reativo manual',tobe:'CRM + Réguas',hcA:1.0,hcE:0.5,saving:130000,status:'Em Diagnóstico',
+    porques:['Por que reativo? Sem priorização por valor.','Por que? Score de cobrança não consolidado.','Por que? Régua de comunicação manual.','Por que? Sem ferramenta CRM dedicada.','Por que? Investimento não priorizado.'],
+    raiz:'Ausência de CRM dedicado de cobrança com réguas automatizadas.'},
+  {id:'CCOB-CB-06',title:'Validação de Minutas (Não Judicial)',area:'Cobrança',rich:false,
+    desc:'Validação jurídica de minutas de acordo não-judicial.',
+    volume:'Conforme demanda',hcA:0.4,hcE:0.2,saving:25000,status:'Em Diagnóstico'},
+  {id:'CCOB-CB-07',title:'Conciliações',area:'Cobrança',rich:true,
+    desc:'Conciliação manual e automática de pagamentos — 85.960/ano · 45% automatizado.',
+    sol:'Migração para Pix com identificação nativa + match parcial automatizado.',
+    volume:'85.960/ano · 45% auto',asis:'45% auto · 31 dias pior',tobe:'≥85% auto · ≤5 dias',hcA:4.0,hcE:1.5,saving:432000,status:'Em Diagnóstico',
+    porques:['Por que 55% manual? Match exato apenas para automação.','Por que? Pagamentos parciais e com juros ficam fora.','Por que? TED não carrega metadados.','Por que? TED é estruturalmente incapaz (vs Pix).','Por que? Sem política de migração para Pix/Boleto.'],
+    raiz:'Meio de pagamento inadequado sem política de migração.'},
+  {id:'CCOB-CB-08',title:'Demandas do Comercial (ServiceNow) — alinhamento com jurídico',area:'Cobrança',rich:false,
+    desc:'Tratamento de tickets ServiceNow do Comercial com interface jurídica.',
+    volume:'Recorrente',hcA:0.5,hcE:0.25,saving:30000,status:'Em Diagnóstico'},
+  {id:'CCOB-CB-09',title:'Acordos Judiciais',area:'Cobrança',rich:true,
+    desc:'Acordos judiciais — 150 acordos/ano · R$ 105 milhões.',
+    sol:'Workflow integrado com escritórios jurídicos + dashboard de status.',
+    volume:'150/ano · R$ 105 MLN',asis:'Manual fragmentado',tobe:'Workflow integrado',hcA:0.8,hcE:0.4,saving:85000,status:'Em Diagnóstico',
+    porques:['Por que fragmentado? Vários escritórios sem padrão.','Por que? Sem plataforma única.','Por que? Histórico contratual disperso.','Por que? Sem migração para gestor jurídico.','Por que? Falta de SLA contratualizado.'],
+    raiz:'Multi-escritório sem plataforma única nem SLA padronizado.'},
+  {id:'CCOB-CB-10',title:'Demandas do Jurídico (ServiceNow)',area:'Cobrança',rich:false,
+    desc:'Tickets oriundos do Jurídico para o CCOB.',
+    volume:'Recorrente',hcA:0.4,hcE:0.2,saving:20000,status:'Em Diagnóstico'},
+  {id:'CCOB-CB-11',title:'Negativações no Serasa',area:'Cobrança',rich:false,
+    desc:'Operacionalização de negativação no Serasa.',
+    volume:'Recorrente',hcA:0.3,hcE:0.15,saving:18000,status:'Em Diagnóstico'},
+  {id:'CCOB-CB-12',title:'Débitos via Protesto',area:'Cobrança',rich:false,
+    desc:'Operacionalização de protesto eletrônico de débitos.',
+    volume:'Recorrente',hcA:0.3,hcE:0.15,saving:20000,status:'Em Diagnóstico'},
+  {id:'CCOB-CB-13',title:'PPAs Enviados ao Jurídico',area:'Cobrança',rich:false,
+    desc:'Encaminhamento de PPAs (Preparação Prévia de Ação) para o Jurídico.',
+    volume:'Conforme demanda',hcA:0.3,hcE:0.15,saving:17000,status:'Em Diagnóstico'}
+];
+
+/* ═══════════════════════════════════════════════════════════════════
+   2) SEED — 25 INICIATIVAS CCOB (Crédito + Cobrança)
+   ═══════════════════════════════════════════════════════════════════ */
+function seedCCOBInitiatives(){
+  if(typeof initiatives==='undefined' || !Array.isArray(initiatives)){
+    console.warn('[v18] initiatives ainda não disponível');return;
+  }
+  // garante projeto pCCOB
+  if(typeof projects!=='undefined' && Array.isArray(projects) && !projects.some(p=>p.id==='pCCOB')){
+    projects.push({id:'pCCOB',name:'CCOB — Crédito & Cobrança',desc:'Iniciativas do CCOB (Crédito + Cobrança)'});
+  }
+  let novos=0;
+  window.CCOB_INITIATIVES.forEach((it,idx)=>{
+    if(initiatives.some(i=>i.id===it.id)) return;
+    const ishikawa = it.rich ? {
+      metodo:'Processo manual sem padrão único',
+      maquina:'SAP/BW/Excel — sem integração ponta a ponta',
+      material:'Documentos heterogêneos sem padronização',
+      maoObra:'4 analistas absorvendo toda a demanda',
+      medida:'Custo de processo manual não monetizado',
+      meioAmb:'Pressão Comercial + Cliente sem incentivo correto'
+    } : null;
+    const init = {
+      id: it.id,
+      projectId: 'pCCOB',
+      title: it.title,
+      status: it.status||'Em Diagnóstico',
+      priority: it.rich ? 'Alta' : 'Média',
+      type: 'Processo',
+      area: it.area,
+      leader: 'A definir',
+      sponsor: 'Diretoria CCOB',
+      description: it.desc,
+      solution: it.sol || '',
+      impactNeg: it.rich?4:3,
+      impactCli: it.rich?4:3,
+      effort:    it.rich?3:2,
+      complexity:it.rich?3:2,
+      impactFin: it.rich?4:3,
+      startDate:'2026-01-01',
+      endDate:  '2026-12-31',
+      hcActual: it.hcA||0.3,
+      hcEstimated: it.hcE||0.1,
+      hcReached: 0,
+      savingPrev: it.saving||0,
+      savingReal: 0,
+      score: it.rich?78:55,
+      notes: '['+it.area+'] '+(it.volume?'Volume: '+it.volume+'. ':'')+(it.asis?'AS-IS: '+it.asis+' · TO-BE: '+it.tobe+'.':''),
+      qualitativeImpacts: it.rich ? 'Redução de lead time, ganho de produtividade dos 4 analistas, monetização do custo operacional invisível.' : '',
+      porques: it.porques||[],
+      raiz: it.raiz||'',
+      ishikawa: ishikawa,
+      kpis: it.rich ? [{nome:'Volume',asis:it.volume,tobe:it.tobe||'—'},{nome:'HC',asis:(it.hcA||0)+' FTE',tobe:(it.hcE||0)+' FTE'}] : [],
+      risks: it.rich ? [{risk:it.raiz||'Risco operacional',prob:'Alta',mit:'Plano CCOB consolidado'}] : [],
+      stakeholders: ['CCOB - '+it.area,'Diretoria Comercial','TI'],
+      tasks: [
+        {id:'tk-'+it.id+'-1',text:'Mapeamento AS-IS detalhado',status:'Não Iniciado',pct:0,owner:'A definir',area:'CCOB',prazo:'2026-03-31',crit:'Alta',dep:''},
+        {id:'tk-'+it.id+'-2',text:'Definição do TO-BE',status:'Não Iniciado',pct:0,owner:'A definir',area:'CCOB',prazo:'2026-05-31',crit:'Alta',dep:'AS-IS'},
+        {id:'tk-'+it.id+'-3',text:'Plano de implantação',status:'Não Iniciado',pct:0,owner:'A definir',area:'CCOB',prazo:'2026-07-31',crit:'Média',dep:'TO-BE'}
+      ]
+    };
+    initiatives.push(init);
+    try{ if(typeof saveInitiativeToSupabase==='function') saveInitiativeToSupabase(init,true); }catch(e){}
+    novos++;
+  });
+  if(novos>0){
+    ['renderKanban','renderInitiatives','renderPriorizacao','renderDashboard','renderTable','renderAll','render','renderProjectSelector']
+      .forEach(fn=>{ try{ if(typeof window[fn]==='function') window[fn](); }catch(e){} });
+    try{ if(typeof showTab==='function' && typeof currentTab!=='undefined') showTab(currentTab); }catch(e){}
+    console.log('[v18] '+novos+' iniciativas CCOB seeded.');
+    try{ if(typeof showToast==='function') showToast(novos+' iniciativas CCOB carregadas ('+novos+' novas)','success'); }catch(e){}
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   3) INDICADORES MEREO (GTESG00207, GTESG00208) com fórmula + tooltip
+   ═══════════════════════════════════════════════════════════════════ */
+function seedMereoIndicadores(){
+  if(typeof mereoData==='undefined' || !mereoData.indicators) return;
+  const novos = [
+    {
+      name:'GTESG00207 — Redução dias assinatura Nova Imagem',
+      unit:'Dias',
+      months:{meta:[90,90,90,80,80,80,75,75,75,70,70,70], real:[128,102.4,98.1,81.6,0,0,0,0,0,0,0,0]},
+      useFormula:true,
+      formula:'Nota = ( (Meta − Real) / Meta ) × 100 + 100, escala Mereo: 0→143,90 · 80→125,40 · 100→100 · 120→87,30',
+      formulaTooltip:'Mereo GTESG00207 (polaridade ↓)\nTipo: Compartilhada · Acumulação: Média\nCurva de alcance:\n  0  → 143,90\n  80 → 125,40\n  100→ 100,00\n  120→ 87,30\nFonte: Tiago Ribeiro Tôrres',
+      polaridade:'menor'
+    },
+    {
+      name:'GTESG00208 — Melhoria fechamento contratos (Varejo)',
+      unit:'Dias',
+      months:{meta:[40,40,40,40,40,40,40,40,40,40,40,40], real:[57,59,39,34,36,0,0,0,0,0,0,0]},
+      useFormula:true,
+      formula:'Nota = média dos valores pontuais; escala: 0→130 · 80→115 · 100→100 · 120→85',
+      formulaTooltip:'Mereo GTESG00208 (polaridade ↓)\nTipo: Compartilhada · Acumulação: Média\nFonte: Salesforce · Adilson dos Santos Lisboa Júnior\nCurva: 0→130 · 80→115 · 100→100 · 120→85',
+      polaridade:'menor'
+    },
+    {
+      name:'GTESG00183 — Melhoria Processos EVs',
+      unit:'Score',
+      months:{meta:[100,100,100,100,100,100,100,100,100,100,100,100], real:[5.08,62.41,96.04,104.90,34,0,0,0,0,0,0,0]},
+      useFormula:true,
+      formula:'Nota = composta por nota (automático); escala: 80→80 · 100→100 · 120→120',
+      formulaTooltip:'Mereo GTESG00183 (polaridade ↑)\nTipo: Composta por Nota · Acumulação: Automático\nCurva: 80→80 · 100→100 · 120→120',
+      polaridade:'maior'
+    }
+  ];
+  novos.forEach(n=>{
+    if(!mereoData.indicators.some(x=>x.name===n.name)) mereoData.indicators.push(n);
+  });
+  console.log('[v18] Indicadores Mereo verificados ('+mereoData.indicators.length+' total).');
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   4) ABA "TAREFAS" — Timeline, tabelas por projeto, indicadores, CRUD
+   ═══════════════════════════════════════════════════════════════════ */
+window.v18TasksState = { selectedProject:'all', hiddenWidgets:{} };
+
+function v18AllTasks(){
+  if(typeof initiatives==='undefined') return [];
+  const list=[];
+  initiatives.forEach(i=>{
+    (i.tasks||[]).forEach(t=>{
+      list.push({...t, _initId:i.id, _initTitle:i.title, _projectId:i.projectId});
+    });
+  });
+  return list;
+}
+
+function v18ProjectsList(){
+  const set=new Map();
+  if(typeof projects!=='undefined') projects.forEach(p=>set.set(p.id,p.name));
+  if(typeof initiatives!=='undefined') initiatives.forEach(i=>{
+    if(!set.has(i.projectId)) set.set(i.projectId, i.projectId);
+  });
+  return Array.from(set, ([id,name])=>({id,name}));
+}
+
+function renderTarefasTab(){
+  const projs = v18ProjectsList();
+  const sel = window.v18TasksState.selectedProject;
+  const allTasks = v18AllTasks();
+  const filtered = sel==='all' ? allTasks : allTasks.filter(t=>t._projectId===sel);
+
+  // Timeline por projeto
+  const tlItems = projs.map(p=>{
+    const inits = (typeof initiatives!=='undefined'?initiatives:[]).filter(i=>i.projectId===p.id);
+    if(!inits.length) return '';
+    const dStart = inits.map(i=>i.startDate).filter(Boolean).sort()[0]||'—';
+    const dEnd   = inits.map(i=>i.endDate).filter(Boolean).sort().reverse()[0]||'—';
+    const tCount = inits.reduce((s,i)=>s+((i.tasks||[]).length),0);
+    return `<div class="item"><div class="nm">${p.name}</div>
+      <div class="dt">Início: ${dStart} → Fim: ${dEnd}</div>
+      <div class="dt">${inits.length} iniciativas · ${tCount} tarefas</div></div>`;
+  }).filter(Boolean).join('');
+
+  // Placares topo
+  const totals = projs.map(p=>{
+    const tks = allTasks.filter(t=>t._projectId===p.id);
+    const open = tks.filter(t=>t.status!=='Concluído');
+    const dep  = tks.filter(t=>t.dep && t.status!=='Concluído');
+    return {name:p.name, total:tks.length, open:open.length, dep:dep.length};
+  });
+
+  const placares = totals.map(t=>`
+    <div class="v18-mini" style="border-left:3px solid var(--green-700);">
+      <div class="lbl">${t.name}</div>
+      <div class="val">${t.total}</div>
+      <div style="font-size:10.5px;color:var(--grey-500);">${t.open} abertas · ${t.dep} c/ dependência</div>
+    </div>`).join('');
+
+  // Renderiza UMA tabela por projeto
+  const projTables = projs.map(p=>{
+    if(sel!=='all' && sel!==p.id) return '';
+    const tks = allTasks.filter(t=>t._projectId===p.id);
+    if(!tks.length) return '';
+    const pend = tks.filter(t=>t.status!=='Concluído').length;
+    const done = tks.filter(t=>t.status==='Concluído').length;
+    const dep  = tks.filter(t=>t.dep && t.status!=='Concluído').length;
+    const pct  = tks.length ? Math.round(done*100/tks.length) : 0;
+    // por responsável
+    const byOwner={}, byArea={};
+    tks.forEach(t=>{
+      const o=t.owner||'—'; byOwner[o]=(byOwner[o]||0)+1;
+      const a=t.area||'—';  byArea[a] =(byArea[a]||0)+1;
+    });
+    const ownerChips=Object.entries(byOwner).map(([k,v])=>`<span class="v18-chip pend" style="margin:2px;">${k}: ${v}</span>`).join('');
+    const areaChips =Object.entries(byArea).map(([k,v])=>`<span class="v18-chip wip"  style="margin:2px;">${k}: ${v}</span>`).join('');
+
+    const rows = tks.map(t=>{
+      const cls = t.crit==='Alta'?'alta':t.crit==='Crítica'?'crit':t.crit==='Baixa'?'baixa':'med';
+      const st  = t.status==='Concluído'?'ok':t.status==='Em Andamento'?'wip':'pend';
+      return `<tr data-init="${t._initId}" data-tid="${t.id}">
+        <td><input value="${(t.text||'').replace(/"/g,'&quot;')}" onchange="v18EditTask('${t._initId}','${t.id}','text',this.value)"/></td>
+        <td><input value="${t.owner||''}" placeholder="Responsável" onchange="v18EditTask('${t._initId}','${t.id}','owner',this.value)"/></td>
+        <td><input value="${t.area||''}" placeholder="Diretoria/Área" onchange="v18EditTask('${t._initId}','${t.id}','area',this.value)"/></td>
+        <td><input type="date" value="${t.prazo||''}" onchange="v18EditTask('${t._initId}','${t.id}','prazo',this.value)"/></td>
+        <td><input value="${t.dep||''}" placeholder="—" onchange="v18EditTask('${t._initId}','${t.id}','dep',this.value)"/></td>
+        <td><select onchange="v18EditTask('${t._initId}','${t.id}','crit',this.value)">
+          ${['Baixa','Média','Alta','Crítica'].map(x=>`<option ${t.crit===x?'selected':''}>${x}</option>`).join('')}
+        </select></td>
+        <td><select onchange="v18EditTask('${t._initId}','${t.id}','status',this.value)">
+          ${['Não Iniciado','Em Andamento','Bloqueado','Concluído'].map(x=>`<option ${t.status===x?'selected':''}>${x}</option>`).join('')}
+        </select></td>
+        <td style="text-align:center;">
+          <button class="btn btn-ghost btn-xs" onclick="v18OpenInit('${t._initId}')" title="Abrir iniciativa">↗</button>
+          <button class="btn btn-ghost btn-xs" style="color:#c00;" onclick="v18DelTask('${t._initId}','${t.id}')" title="Excluir">✕</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="v18-card" style="margin-bottom:18px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div style="font-size:15px;font-weight:700;color:var(--grey-900);">${p.name}</div>
+          <div style="font-size:11px;color:var(--grey-500);">${tks.length} tarefas · ${pend} pendentes · ${done} concluídas</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-primary btn-sm" onclick="v18NewTask('${p.id}')">+ Nova Tarefa</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <div class="v18-mini"><div class="lbl">Pendentes</div><div class="val" style="color:#c2410c;">${pend}</div></div>
+        <div class="v18-mini"><div class="lbl">Concluídas</div><div class="val" style="color:var(--green-700);">${done}</div></div>
+        <div class="v18-mini"><div class="lbl">C/ dependência</div><div class="val" style="color:#1e40af;">${dep}</div></div>
+        <div class="v18-mini" style="flex:1;min-width:200px;">
+          <div class="lbl">Progresso geral</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+            <div class="v18-pb" style="flex:1;"><div class="v18-pb-f" style="width:${pct}%;"></div></div>
+            <div style="font-size:13px;font-weight:700;color:var(--green-700);">${pct}%</div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:260px;"><div style="font-size:11px;font-weight:700;color:var(--grey-600);text-transform:uppercase;margin-bottom:4px;">Tarefas por Responsável</div>${ownerChips||'<span class="text-muted text-xs">—</span>'}</div>
+        <div style="flex:1;min-width:260px;"><div style="font-size:11px;font-weight:700;color:var(--grey-600);text-transform:uppercase;margin-bottom:4px;">Tarefas por Área</div>${areaChips||'<span class="text-muted text-xs">—</span>'}</div>
+      </div>
+      <div class="tbl-wrap" style="overflow-x:auto;">
+        <table class="v18-tbl">
+          <thead><tr>
+            <th style="min-width:240px;">Tarefa</th>
+            <th style="min-width:140px;">Responsável</th>
+            <th style="min-width:120px;">Diretoria</th>
+            <th style="min-width:120px;">Prazo</th>
+            <th style="min-width:120px;">Dependência</th>
+            <th style="min-width:100px;">Criticidade</th>
+            <th style="min-width:120px;">Status</th>
+            <th style="min-width:70px;">Ações</th>
+          </tr></thead>
+          <tbody>${rows||'<tr><td colspan="8" class="text-muted text-center">Sem tarefas neste projeto</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).filter(Boolean).join('');
+
+  return `<div class="sh mb-3">
+    <div>
+      <div class="sh-title">📋 Tarefas — Gestão por Projeto</div>
+      <div class="sh-sub">Timeline, indicadores e tabela por projeto. Edição inline.</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <label style="font-size:11px;color:var(--grey-600);">Projeto:</label>
+      <select onchange="v18TasksState.selectedProject=this.value;showTab('tarefas')" style="padding:6px 10px;border-radius:6px;border:1px solid var(--grey-200);font-size:12px;">
+        <option value="all" ${sel==='all'?'selected':''}>Todos os projetos</option>
+        ${projs.map(p=>`<option value="${p.id}" ${sel===p.id?'selected':''}>${p.name}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+
+  <div class="v18-card mb-3">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div style="font-size:13px;font-weight:700;color:var(--grey-900);">🗓️ Timeline dos Projetos</div>
+      <button class="btn btn-ghost btn-xs" onclick="v18ToggleWidget('timeline')" title="Ocultar/Exibir">⚙️</button>
+    </div>
+    ${window.v18TasksState.hiddenWidgets.timeline ? '<div class="text-muted text-xs">Timeline oculta · clique em ⚙️ para exibir</div>' : `<div class="v18-tl">${tlItems||'<div class="text-muted text-xs">Sem projetos cadastrados</div>'}</div>`}
+  </div>
+
+  <div class="v18-card mb-3">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div style="font-size:13px;font-weight:700;color:var(--grey-900);">📊 Placar por Projeto</div>
+      <button class="btn btn-ghost btn-xs" onclick="v18ToggleWidget('placar')" title="Ocultar/Exibir">⚙️</button>
+    </div>
+    ${window.v18TasksState.hiddenWidgets.placar ? '<div class="text-muted text-xs">Placares ocultos</div>' : `<div style="display:flex;gap:10px;flex-wrap:wrap;">${placares||'<div class="text-muted text-xs">Sem dados</div>'}</div>`}
+  </div>
+
+  ${projTables||'<div class="v18-card text-muted text-center">Nenhum projeto/tarefa para exibir</div>'}`;
+}
+
+function v18EditTask(initId, taskId, field, value){
+  const init = initiatives.find(i=>i.id===initId); if(!init) return;
+  const t = (init.tasks||[]).find(x=>x.id===taskId); if(!t) return;
+  t[field] = value;
+  if(field==='status' && value==='Concluído') t.pct=100;
+  try{ if(typeof saveInitiativeToSupabase==='function') saveInitiativeToSupabase(init,true); }catch(e){}
+}
+function v18DelTask(initId, taskId){
+  if(!confirm('Excluir tarefa?')) return;
+  const init = initiatives.find(i=>i.id===initId); if(!init) return;
+  init.tasks = (init.tasks||[]).filter(x=>x.id!==taskId);
+  try{ if(typeof saveInitiativeToSupabase==='function') saveInitiativeToSupabase(init,true); }catch(e){}
+  showTab('tarefas');
+}
+function v18NewTask(projectId){
+  const inits = initiatives.filter(i=>i.projectId===projectId);
+  if(!inits.length){ if(typeof showToast==='function') showToast('Crie uma iniciativa antes','warn'); return; }
+  const opt = inits.map((i,idx)=>idx+') '+i.id+' — '+i.title).join('\n');
+  const pick = prompt('Escolha a iniciativa (número):\n'+opt,'0');
+  if(pick===null) return;
+  const init = inits[parseInt(pick)||0]; if(!init) return;
+  const text = prompt('Descrição da tarefa:'); if(!text) return;
+  init.tasks = init.tasks||[];
+  init.tasks.push({
+    id:'tk-'+Date.now(),text:text,owner:'',area:'',prazo:'',dep:'',crit:'Média',status:'Não Iniciado',pct:0
+  });
+  try{ if(typeof saveInitiativeToSupabase==='function') saveInitiativeToSupabase(init,true); }catch(e){}
+  showTab('tarefas');
+}
+function v18OpenInit(initId){
+  if(typeof openDrawer==='function') openDrawer(initId);
+}
+function v18ToggleWidget(key){
+  window.v18TasksState.hiddenWidgets[key] = !window.v18TasksState.hiddenWidgets[key];
+  showTab('tarefas');
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   5) PATCH — showTab para incluir 'tarefas' + botão na tab bar
+   ═══════════════════════════════════════════════════════════════════ */
+(function patchShowTab(){
+  if(typeof window.showTab!=='function'){ setTimeout(patchShowTab,300); return; }
+  const original = window.showTab;
+  window.showTab = function(tab, btn){
+    if(tab==='tarefas'){
+      try{ currentTab='tarefas'; }catch(e){}
+      const tabs=document.querySelectorAll('#mainTabs .tb');
+      tabs.forEach(t=>t.classList.remove('active'));
+      const el=document.querySelector('#mainTabs .tb[data-v18-tab="tarefas"]');
+      if(el) el.classList.add('active');
+      const ca=document.getElementById('contentArea');
+      if(ca){ ca.innerHTML = renderTarefasTab(); }
+      return;
+    }
+    return original.apply(this, arguments);
+  };
+})();
+
+function v18InjectTarefasButton(){
+  const bar = document.getElementById('mainTabs'); if(!bar) return;
+  if(bar.querySelector('[data-v18-tab="tarefas"]')) return;
+  const btn = document.createElement('button');
+  btn.className='tb';
+  btn.setAttribute('data-v18-tab','tarefas');
+  btn.textContent='📋 Tarefas';
+  btn.onclick=function(){ showTab('tarefas', btn); };
+  // inserir antes do botão Configurações (admin-only) se existir, senão no fim
+  const admin = bar.querySelector('.admin-only');
+  if(admin) bar.insertBefore(btn, admin); else bar.appendChild(btn);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   6) PATCH — tooltip de fórmula nos indicadores Mereo
+   ═══════════════════════════════════════════════════════════════════ */
+function v18EnhanceMereo(){
+  if(typeof currentTab==='undefined' || currentTab!=='mereo') return;
+  // tabs do mereo dentro do contentArea — adiciona ⓘ com tooltip
+  const tabs=document.querySelectorAll('#contentArea .tb');
+  tabs.forEach((tEl,idx)=>{
+    if(tEl.querySelector('.v18-tip')) return;
+    const ind = (mereoData.indicators||[])[idx];
+    if(!ind || !ind.formula) return;
+    const tip=document.createElement('span');
+    tip.className='v18-tip';
+    tip.textContent='ⓘ';
+    tip.setAttribute('data-tip', ind.formulaTooltip || ('Fórmula: '+ind.formula));
+    tEl.appendChild(tip);
+  });
+  // campo editável de fórmula abaixo do título do indicador
+  const ind = (mereoData.indicators||[])[mereoData.selectedIndicator];
+  if(!ind) return;
+  const card=document.querySelector('#contentArea .card');
+  if(card && !card.querySelector('.v18-formula-box') && ind.formula!==undefined){
+    const box=document.createElement('div');
+    box.className='v18-formula-box';
+    box.style.cssText='margin:8px 0 12px;padding:10px 12px;background:#f8faf6;border:1px dashed var(--green-700);border-radius:6px;';
+    box.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+        <span style="font-size:11px;font-weight:700;color:var(--green-800);">🧮 Fórmula aplicada (editável)</span>
+        <button class="btn btn-ghost btn-xs" onclick="v18SaveFormula(this)">💾 Salvar</button>
+      </div>
+      <textarea data-mereo-formula style="width:100%;min-height:42px;font-family:monospace;font-size:11.5px;border:1px solid var(--grey-200);border-radius:4px;padding:6px 8px;">${ind.formula||''}</textarea>
+      <div style="font-size:10.5px;color:var(--grey-500);margin-top:4px;">Passe o mouse sobre o ⓘ no nome do indicador para ver a memória de cálculo Mereo.</div>`;
+    card.parentNode.insertBefore(box, card.nextSibling);
+  }
+}
+function v18SaveFormula(btn){
+  const ta=btn.closest('.v18-formula-box').querySelector('[data-mereo-formula]');
+  const ind=mereoData.indicators[mereoData.selectedIndicator];
+  if(!ind) return;
+  ind.formula = ta.value;
+  if(typeof showToast==='function') showToast('Fórmula atualizada','success');
+}
+
+// hook em showTab — sempre que abrir 'mereo' rode o enhancer
+(function patchMereoEnhance(){
+  if(typeof window.showTab!=='function'){ setTimeout(patchMereoEnhance,400); return; }
+  const orig = window.showTab;
+  window.showTab = function(tab,btn){
+    const r = orig.apply(this,arguments);
+    if(tab==='mereo') setTimeout(v18EnhanceMereo, 180);
+    return r;
+  };
+})();
+
+/* ═══════════════════════════════════════════════════════════════════
+   7) PATCH — botão "📋 Tarefas" dentro do drawer da iniciativa
+   ═══════════════════════════════════════════════════════════════════ */
+(function patchOpenDrawer(){
+  if(typeof window.openDrawer!=='function'){ setTimeout(patchOpenDrawer,400); return; }
+  const orig = window.openDrawer;
+  window.openDrawer = function(initId){
+    const r = orig.apply(this,arguments);
+    setTimeout(()=>{
+      const ftr=document.querySelector('.drawer-ftr');
+      if(ftr && !ftr.querySelector('[data-v18-tarefas]')){
+        const b=document.createElement('button');
+        b.className='btn btn-outline btn-sm';
+        b.setAttribute('data-v18-tarefas','1');
+        b.textContent='📋 Ver Tarefas';
+        b.onclick=function(){
+          const init = initiatives.find(i=>i.id===initId);
+          if(init) window.v18TasksState.selectedProject = init.projectId;
+          if(typeof closeDrawer==='function') closeDrawer();
+          showTab('tarefas');
+        };
+        ftr.insertBefore(b, ftr.firstChild);
+      }
+    }, 80);
+    return r;
+  };
+})();
+
+/* ═══════════════════════════════════════════════════════════════════
+   8) BOOTSTRAP — espera initiatives e dispara seeds + patches
+   ═══════════════════════════════════════════════════════════════════ */
+function v18Boot(tries){
+  tries=tries||0;
+  if(typeof initiatives==='undefined' || typeof showTab!=='function'){
+    if(tries>40) return;
+    return setTimeout(()=>v18Boot(tries+1), 400);
+  }
+  try{ seedCCOBInitiatives(); }catch(e){ console.error('[v18] seedCCOBInitiatives:',e); }
+  try{ seedMereoIndicadores(); }catch(e){ console.error('[v18] seedMereoIndicadores:',e); }
+  try{ v18InjectTarefasButton(); }catch(e){ console.error('[v18] injectTarefasButton:',e); }
+  console.log('[v18] Boot completo.');
+}
+setTimeout(()=>v18Boot(0), 2500);
+// re-injeta o botão se a tab bar for re-renderizada
+setInterval(()=>{ try{ v18InjectTarefasButton(); }catch(e){} }, 3000);
+</script>
